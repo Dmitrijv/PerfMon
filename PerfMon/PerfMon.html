@@ -1,0 +1,1619 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WAR UI Performance Analyzer · Event Correlator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+    <style>
+      :root {
+        --bg-0: #1a1a1a;
+        --bg-1: #232323;
+        --bg-2: #2c2c2c;
+        --bg-3: #363636;
+        --bg-4: #404040;
+        --border: #3a3a3a;
+        --border-strong: #4a4a4a;
+        --text-0: #ededed;
+        --text-1: #c8c8c8;
+        --text-2: #8a8a8a;
+        --text-3: #606060;
+        --accent: #d4a857;
+        --accent-soft: rgba(212, 168, 87, 0.18);
+        --accent-line: rgba(212, 168, 87, 0.65);
+        --spike: #c97474;
+        --spike-soft: rgba(201, 116, 116, 0.18);
+      }
+
+      html,
+      body {
+        background-color: var(--bg-0);
+        color: var(--text-1);
+        font-family:
+          "Inter",
+          system-ui,
+          -apple-system,
+          sans-serif;
+      }
+
+      .panel {
+        background-color: var(--bg-1);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 1.25rem 1.5rem;
+      }
+
+      .panel-title {
+        color: var(--text-0);
+        font-size: 1.05rem;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+      }
+
+      .panel-subtitle {
+        color: var(--text-2);
+        font-size: 0.85rem;
+      }
+
+      .drop-zone {
+        border: 1.5px dashed var(--border-strong);
+        border-radius: 6px;
+        padding: 2rem 1.5rem;
+        text-align: center;
+        cursor: pointer;
+        transition:
+          border-color 0.15s,
+          background-color 0.15s,
+          color 0.15s;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        min-height: 280px;
+        color: var(--text-2);
+        background-color: var(--bg-1);
+      }
+      .drop-zone:hover {
+        border-color: var(--text-3);
+        color: var(--text-1);
+      }
+      .drop-zone.drag-over {
+        border-color: var(--accent);
+        background-color: var(--accent-soft);
+        color: var(--text-0);
+      }
+      .drop-zone svg {
+        color: var(--text-3);
+        transition: color 0.15s;
+      }
+      .drop-zone:hover svg,
+      .drop-zone.drag-over svg {
+        color: var(--accent);
+      }
+
+      #chart {
+        cursor: crosshair;
+      }
+
+      .status-pill {
+        display: inline-block;
+        padding: 0.15rem 0.6rem;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        background-color: var(--bg-3);
+        color: var(--text-2);
+        border: 1px solid var(--border);
+      }
+      .status-pill.ok {
+        color: #9bcf8a;
+        border-color: #3d5a3a;
+      }
+      .status-pill.err {
+        color: #d98a8a;
+        border-color: #5a3a3a;
+      }
+      .status-pill.load {
+        color: var(--accent);
+        border-color: #5a4a2a;
+      }
+
+      .input-text {
+        background-color: var(--bg-2);
+        color: var(--text-0);
+        border: 1px solid var(--border-strong);
+        border-radius: 4px;
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.875rem;
+      }
+      .input-text:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 1px var(--accent-soft);
+      }
+      .input-number {
+        background-color: var(--bg-2);
+        color: var(--text-0);
+        border: 1px solid var(--border-strong);
+        border-radius: 4px;
+        padding: 0.35rem 0.5rem;
+        font-size: 0.85rem;
+        font-family: "JetBrains Mono", "Courier New", monospace;
+        width: 6.5rem;
+      }
+      .input-number:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 1px var(--accent-soft);
+      }
+
+      .check-row {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        cursor: pointer;
+        font-size: 0.85rem;
+        color: var(--text-1);
+      }
+      .check-row input[type="checkbox"] {
+        accent-color: var(--accent);
+        width: 1rem;
+        height: 1rem;
+      }
+
+      .event-list {
+        max-height: 600px;
+        overflow-y: auto;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        background-color: var(--bg-0);
+      }
+      .event-list.compact {
+        max-height: 360px;
+      }
+      .event-list::-webkit-scrollbar {
+        width: 10px;
+      }
+      .event-list::-webkit-scrollbar-track {
+        background: var(--bg-1);
+      }
+      .event-list::-webkit-scrollbar-thumb {
+        background: var(--bg-4);
+        border-radius: 5px;
+      }
+      .event-list::-webkit-scrollbar-thumb:hover {
+        background: var(--border-strong);
+      }
+
+      .event-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.45rem 0.75rem;
+        border-bottom: 1px solid var(--border);
+        cursor: pointer;
+        transition: background-color 0.1s;
+        font-family: "JetBrains Mono", "Courier New", monospace;
+        font-size: 0.8rem;
+        gap: 0.75rem;
+      }
+      .event-row:last-child {
+        border-bottom: none;
+      }
+      .event-row:hover {
+        background-color: var(--bg-2);
+      }
+      .event-row.active {
+        background-color: var(--accent-soft);
+        color: var(--text-0);
+        border-left: 3px solid var(--accent);
+        padding-left: calc(0.75rem - 3px);
+      }
+      .event-row.active .event-count {
+        color: var(--accent);
+      }
+
+      .event-name {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .event-type {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 0.05rem 0.4rem;
+        border-radius: 3px;
+        flex-shrink: 0;
+      }
+      .event-type.evt {
+        color: #d4a857;
+        background-color: rgba(212, 168, 87, 0.12);
+      }
+      .event-type.fn {
+        color: #8aac8a;
+        background-color: rgba(138, 172, 138, 0.12);
+      }
+      .event-type.err {
+        color: #c97474;
+        background-color: rgba(201, 116, 116, 0.12);
+      }
+      .event-count {
+        color: var(--text-2);
+        font-size: 0.8rem;
+        flex-shrink: 0;
+        min-width: 3ch;
+        text-align: right;
+      }
+      .event-score {
+        color: var(--spike);
+        font-size: 0.8rem;
+        flex-shrink: 0;
+        min-width: 4ch;
+        text-align: right;
+        font-family: "JetBrains Mono", "Courier New", monospace;
+      }
+
+      .legend-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.25rem 0.6rem;
+        background-color: var(--bg-3);
+        border: 1px solid var(--border-strong);
+        border-radius: 3px;
+        font-size: 0.75rem;
+        color: var(--text-1);
+        font-family: "JetBrains Mono", "Courier New", monospace;
+      }
+      .legend-chip .swatch {
+        width: 10px;
+        height: 10px;
+        border-radius: 2px;
+      }
+      .legend-chip button {
+        color: var(--text-3);
+        margin-left: 0.25rem;
+        font-size: 1rem;
+        line-height: 1;
+      }
+      .legend-chip button:hover {
+        color: var(--text-0);
+      }
+
+      .filter-tab {
+        padding: 0.3rem 0.7rem;
+        font-size: 0.75rem;
+        background: transparent;
+        color: var(--text-2);
+        border: 1px solid var(--border-strong);
+        border-radius: 3px;
+        cursor: pointer;
+        transition: all 0.1s;
+      }
+      .filter-tab:hover {
+        color: var(--text-0);
+      }
+      .filter-tab.active {
+        background-color: var(--bg-3);
+        color: var(--text-0);
+        border-color: var(--text-3);
+      }
+
+      .precision-badge {
+        display: inline-block;
+        padding: 0.05rem 0.45rem;
+        border-radius: 3px;
+        font-size: 0.7rem;
+        font-family: "JetBrains Mono", "Courier New", monospace;
+        margin-left: 0.5rem;
+      }
+      .precision-badge.hi {
+        background-color: rgba(155, 207, 138, 0.12);
+        color: #9bcf8a;
+        border: 1px solid #3d5a3a;
+      }
+      .precision-badge.lo {
+        background-color: rgba(201, 116, 116, 0.12);
+        color: #c97474;
+        border: 1px solid #5a3a3a;
+      }
+      #clear-overlays-btn,
+      #bucket-clear-overlays-btn {
+        height: 39px;
+        min-width: min-content;
+        text-wrap: nowrap;
+      }
+    </style>
+  </head>
+  <body class="p-4 md:p-6">
+    <input id="elapsed-log-input" type="file" accept=".log,.txt" class="hidden" />
+    <input id="ui-log-input" type="file" accept=".log,.txt" class="hidden" />
+
+    <div class="container mx-auto max-w-7xl space-y-4">
+      <header class="panel flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 class="text-2xl font-semibold" style="color: var(--text-0)">WAR UI Performance Analyzer</h1>
+          <p class="panel-subtitle mt-1">
+            Drop the elapsed log on the chart, the UI log on the right panel. Click an event to overlay vertical
+            markers; click a chart sample above the spike threshold to inspect what fired around it.
+          </p>
+        </div>
+        <div class="flex items-center gap-2">
+          <span id="precision-badge" class="precision-badge lo">1s precision</span>
+          <span id="status" class="status-pill">idle</span>
+        </div>
+      </header>
+
+      <!-- Controls -->
+      <div id="controls-row" class="hidden panel flex items-center flex-wrap gap-x-6 gap-y-3">
+        <label class="check-row">
+          <span style="color: var(--text-2)">Spike threshold</span>
+          <input id="spike-threshold" type="number" min="0" step="0.005" value="0.05" class="input-number" />
+          <span style="color: var(--text-2)">s</span>
+        </label>
+        <label class="check-row">
+          <input id="toggle-burst" type="checkbox" checked />
+          <span>Burst histogram</span>
+        </label>
+        <label class="check-row">
+          <input id="toggle-spike-shading" type="checkbox" checked />
+          <span>Highlight spikes</span>
+        </label>
+        <span id="anchor-info" class="panel-subtitle ml-auto"></span>
+      </div>
+
+      <!-- Chart -->
+      <div class="panel">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <h2 id="chart-title" class="panel-title">OnUpdate Elapsed Time</h2>
+          <div id="active-overlays" class="flex flex-wrap gap-2"></div>
+        </div>
+        <div id="chart" class="w-full" style="height: 480px">
+          <div id="chart-drop-zone" class="drop-zone">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-14 w-14 mb-3"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.5"
+                d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v13a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"
+              />
+            </svg>
+            <span class="text-base font-medium">Drop Elapsed Time Log</span>
+            <span class="text-sm mt-1" style="color: var(--text-3)">or click to browse</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Spike inspector: full width -->
+      <div id="spike-inspector-panel" class="panel hidden">
+        <div class="flex items-center justify-between mb-1">
+          <h2 class="panel-title">Spike inspector</h2>
+          <button id="spike-inspector-close" class="filter-tab" title="Close">close</button>
+        </div>
+        <p id="spike-inspector-info" class="panel-subtitle mb-3">
+          Click any sample on the chart above the spike threshold to inspect.
+        </p>
+        <div id="spike-inspector-list" class="event-list compact"></div>
+      </div>
+
+      <!-- Suspicious events -->
+      <div id="suspicious-panel" class="panel hidden">
+        <div class="flex items-center justify-between mb-1">
+          <h2 class="panel-title">Suspicious events</h2>
+          <div class="flex items-center gap-3">
+            <span id="suspicious-count" class="panel-subtitle"></span>
+            <button id="suspicious-close" class="filter-tab" title="Close">close</button>
+          </div>
+        </div>
+        <p class="panel-subtitle mb-3">
+          Ranked by spike-window density relative to baseline density (higher = more co-incident with freezes).
+        </p>
+        <div id="suspicious-list" class="event-list compact"></div>
+      </div>
+
+      <!-- Event bucket inspector -->
+      <div id="event-bucket-inspector-panel" class="panel hidden">
+        <div class="flex items-center justify-between mb-1">
+          <h2 class="panel-title">Event bucket inspector</h2>
+          <button id="event-bucket-inspector-close" class="filter-tab" title="Close">close</button>
+        </div>
+        <p id="event-bucket-inspector-info" class="panel-subtitle mb-3">
+          Click any burst-histogram bar to inspect which events fired inside that bucket.
+        </p>
+        <div id="bucket-type-filters" class="flex gap-1 mb-2 justify-end">
+          <button class="filter-tab active" data-type="all">All</button>
+          <button class="filter-tab" data-type="Event">Events</button>
+          <button class="filter-tab" data-type="Function">Functions</button>
+          <button class="filter-tab" data-type="Error">Errors</button>
+        </div>
+        <div class="flex items-center gap-2 mb-3">
+          <input id="bucket-event-search" type="text" class="input-text" placeholder="Filter by name..." />
+          <button
+            id="bucket-clear-overlays-btn"
+            class="filter-tab"
+            title="Remove overlays for events in this bucket"
+          >
+            Clear overlays
+          </button>
+        </div>
+        <div id="event-bucket-inspector-list" class="event-list compact"></div>
+      </div>
+
+      <!-- UI log -->
+      <div class="panel">
+        <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
+          <div>
+            <h2 class="panel-title">UI Log</h2>
+            <p id="ui-subtitle" class="panel-subtitle">
+              Drop a UI log to populate the event list. Click a row to overlay all occurrences as vertical markers on
+              the chart.
+            </p>
+          </div>
+          <div id="type-filters" class="flex gap-1 hidden">
+            <button class="filter-tab active" data-type="all">All</button>
+            <button class="filter-tab" data-type="Event">Events</button>
+            <button class="filter-tab" data-type="Function">Functions</button>
+            <button class="filter-tab" data-type="Error">Errors</button>
+          </div>
+        </div>
+        <div id="ui-controls" class="flex items-center gap-2 mb-3 hidden">
+          <input id="event-search" type="text" class="input-text" placeholder="Filter by name..." />
+          <button id="clear-overlays-btn" class="filter-tab" title="Remove all vertical markers">Clear overlays</button>
+        </div>
+        <div id="ui-drop-zone" class="drop-zone">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-12 w-12 mb-3"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="1.5"
+              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+            />
+          </svg>
+          <span class="text-base font-medium">Drop UI Log</span>
+          <span class="text-sm mt-1" style="color: var(--text-3)">or click to browse</span>
+        </div>
+        <div id="event-list" class="event-list hidden"></div>
+      </div>
+    </div>
+
+    <script>
+      const elapsedLogInput = document.getElementById("elapsed-log-input");
+      const uiLogInput = document.getElementById("ui-log-input");
+      const statusEl = document.getElementById("status");
+      const precisionBadgeEl = document.getElementById("precision-badge");
+      const chartEl = document.getElementById("chart");
+      const chartDropZone = document.getElementById("chart-drop-zone");
+      const uiDropZone = document.getElementById("ui-drop-zone");
+      const uiSubtitleEl = document.getElementById("ui-subtitle");
+      const uiControlsEl = document.getElementById("ui-controls");
+      const typeFiltersEl = document.getElementById("type-filters");
+      const eventListEl = document.getElementById("event-list");
+      const UI_SUBTITLE_DEFAULT =
+        "Drop a UI log to populate the event list. Click a row to overlay all occurrences as vertical markers on the chart.";
+      const eventSearchEl = document.getElementById("event-search");
+      const activeOverlaysEl = document.getElementById("active-overlays");
+      const clearOverlaysBtn = document.getElementById("clear-overlays-btn");
+      const controlsRowEl = document.getElementById("controls-row");
+      const chartTitleEl = document.getElementById("chart-title");
+      const anchorInfoEl = document.getElementById("anchor-info");
+
+      const spikeThresholdEl = document.getElementById("spike-threshold");
+      const toggleBurstEl = document.getElementById("toggle-burst");
+      const toggleSpikeShadingEl = document.getElementById("toggle-spike-shading");
+
+      const spikeInspectorPanel = document.getElementById("spike-inspector-panel");
+      const spikeInspectorInfo = document.getElementById("spike-inspector-info");
+      const spikeInspectorList = document.getElementById("spike-inspector-list");
+      const spikeInspectorClose = document.getElementById("spike-inspector-close");
+
+      const bucketInspectorPanel = document.getElementById("event-bucket-inspector-panel");
+      const bucketInspectorInfo = document.getElementById("event-bucket-inspector-info");
+      const bucketInspectorList = document.getElementById("event-bucket-inspector-list");
+      const bucketInspectorClose = document.getElementById("event-bucket-inspector-close");
+      const bucketEventSearchEl = document.getElementById("bucket-event-search");
+      const bucketTypeFiltersEl = document.getElementById("bucket-type-filters");
+      const bucketClearOverlaysBtn = document.getElementById("bucket-clear-overlays-btn");
+
+      const suspiciousPanel = document.getElementById("suspicious-panel");
+      const suspiciousList = document.getElementById("suspicious-list");
+      const suspiciousCountEl = document.getElementById("suspicious-count");
+      const suspiciousClose = document.getElementById("suspicious-close");
+
+      const OVERLAY_PALETTE = [
+        "#d4a857",
+        "#7aa6c2",
+        "#a8c27a",
+        "#c27a9e",
+        "#c2a87a",
+        "#7ac2b8",
+        "#b87ac2",
+        "#c27a7a",
+        "#9ec27a",
+        "#7a8ac2",
+      ];
+
+      // Suspicious-events ranking limits. Top N kept small so noise floor stays
+      // visible; minSamples filters single-shot events that look extreme but
+      // aren't statistically meaningful.
+      const SUSPICIOUS_TOP_N = 40;
+      const SUSPICIOUS_MIN_SAMPLES = 2;
+
+      let elapsedData = []; // [{ wallTime, tMono, timestamp, elapsed }]
+      let breakpointsData = []; // [{ wallTime, tMono, timestamp }]
+      // uiLogRaw is the full parsed UI log; uiLogData is the subset clipped to
+      // the elapsed log's time range so charts and stats ignore entries that
+      // can't be correlated with any visible sample.
+      let uiLogRaw = [];
+      let uiLogData = []; // [{ wallTime, tMono, timestamp, type, message, canonicalMessage, raw }]
+      let uiLogClipped = 0;
+      let uiLogFileName = "";
+      let eventIndex = []; // [{ canonical, type, count, timestamps: [Date,...] }, ...]
+      let activeOverlays = new Map();
+      let activeTypeFilter = "all";
+      // Sticky dismiss flag: once the user closes the suspicious-events panel, keep it
+      // hidden across recomputeSpikeAnalytics() calls until a fresh log load resets it.
+      let suspiciousDismissed = false;
+
+      // Bucket inspector state. bucketLastEntries caches the ranked rows from the most
+      // recently opened bucket so type/search re-renders avoid re-scanning uiLogData.
+      // bucketLastCanonicals captures every canonical that fell in the bucket window
+      // regardless of the local filter, so the bucket-scoped clear-overlays button
+      // matches its label (events in the bucket) instead of only the visible rows.
+      let bucketActiveTypeFilter = "all";
+      let bucketLastEntries = [];
+      let bucketLastCanonicals = new Set();
+
+      // Anchor maps the monotonic clock back onto wall time. Set from the first
+      // entry in either log that carries a [t=N] prefix; all entries with tMono
+      // are then re-projected so events and elapsed samples share a sub-second
+      // axis. Without an anchor, file timestamps are used as-is.
+      let anchor = null; // { wallMs, t0 }
+
+      // Spike-window cache: built once per (elapsedData, threshold) pair and
+      // reused by anomaly ranking and spike inspector to avoid quadratic scans.
+      let spikeWindows = []; // [{ start, end, elapsed, sampleIndex }]
+      let spikeTotalMs = 0;
+      let normalTotalMs = 0;
+
+      // Asymmetric pad applied when constructing spike windows. The 0.1ms
+      // rounding from Lua's `[t=%.4f]` printf can push slow-frame events
+      // (which all share a single per-frame cachedPrefix landing exactly on
+      // the window's left edge) just outside the boundary; SLOP_MS absorbs
+      // that drift, and LEFT_PAD_MS extends the search backwards by roughly
+      // one typical 60Hz frame so the immediately preceding frame's events
+      // are also captured as likely causes.
+      const SPIKE_WINDOW_SLOP_MS = 2;
+      const SPIKE_WINDOW_LEFT_PAD_MS = 16;
+
+      // Burst histogram trace state. Recomputed on relayout / toggle / data
+      // load so it always matches the visible window's bucket density.
+      let burstTraceVisible = false;
+      let lastVisibleRange = null;
+      // Width of the most recently rendered burst bucket (ms). Required so a
+      // click on a bar can rebuild the [center - w/2, center + w/2] window
+      // for the inspector without recomputing TARGET_BUCKETS arithmetic.
+      let lastBurstBucketMs = 0;
+
+      const tStampRegex = /^\[t=([\d\.]+)\]\s+/;
+      // Use `*` rather than `?` on the [t=N] group so logs accidentally written
+      // with a doubled prefix (an early Lua bug) still parse - JS regex keeps
+      // only the last capture of a repeated group, which conveniently lands on
+      // the most recent monotonic value.
+      const elapsedLogRegex =
+        /\[(\d{2})\/(\d{2})\/(\d{2})\]\[(\d{2}):(\d{2}):(\d{2})\]\s+(?:\[t=([\d\.]+)\]\s+)*([\d\.]+)\s*$/;
+      const uiLogRegex =
+        /\[(\d{2})\/(\d{2})\/(\d{2})\]\[(\d{2}):(\d{2}):(\d{2})\]\s+(?:\[t=([\d\.]+)\]\s+)*\[(.*?)\]:\s*(.*)/;
+      const breakpointRegex =
+        /\[(\d{2})\/(\d{2})\/(\d{2})\]\[(\d{2}):(\d{2}):(\d{2})\]\s+(?:\[t=([\d\.]+)\]\s+)*BREAKPOINT/;
+      const functionDetailRegex = /\((.*?)\):\s*(.*)/;
+      const eventDetailRegex = /"(.*)"/;
+
+      function setupDropZone(zoneEl, inputEl, fileHandler) {
+        zoneEl.addEventListener("click", () => inputEl.click());
+        inputEl.addEventListener("change", (e) => {
+          const file = e.target.files[0];
+          if (file) fileHandler(file);
+        });
+        ["dragenter", "dragover"].forEach((ev) =>
+          zoneEl.addEventListener(ev, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            zoneEl.classList.add("drag-over");
+          }),
+        );
+        ["dragleave", "dragend"].forEach((ev) =>
+          zoneEl.addEventListener(ev, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            zoneEl.classList.remove("drag-over");
+          }),
+        );
+        zoneEl.addEventListener("drop", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          zoneEl.classList.remove("drag-over");
+          const file = e.dataTransfer.files[0];
+          if (file) fileHandler(file);
+        });
+      }
+
+      setupDropZone(chartDropZone, elapsedLogInput, handleElapsedFile);
+      setupDropZone(uiDropZone, uiLogInput, handleUiFile);
+
+      function readFileAsText(file) {
+        return new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(r.result);
+          r.onerror = () => reject(r.error);
+          r.readAsText(file);
+        });
+      }
+
+      function buildWallDate(yy, mm, dd, HH, MM, SS) {
+        return new Date(`20${yy}-${mm}-${dd}T${HH}:${MM}:${SS}`);
+      }
+
+      function parseElapsedLog(text) {
+        const data = [];
+        const bps = [];
+        for (const line of text.split("\n")) {
+          const m = line.match(elapsedLogRegex);
+          if (m) {
+            const [, yy, mm, dd, HH, MM, SS, tMonoStr, elapsed] = m;
+            const wall = buildWallDate(yy, mm, dd, HH, MM, SS);
+            data.push({
+              wallTime: wall,
+              tMono: tMonoStr !== undefined ? parseFloat(tMonoStr) : null,
+              timestamp: wall,
+              elapsed: parseFloat(elapsed),
+            });
+            continue;
+          }
+          const bp = line.match(breakpointRegex);
+          if (bp) {
+            const [, yy, mm, dd, HH, MM, SS, tMonoStr] = bp;
+            const wall = buildWallDate(yy, mm, dd, HH, MM, SS);
+            bps.push({
+              wallTime: wall,
+              tMono: tMonoStr !== undefined ? parseFloat(tMonoStr) : null,
+              timestamp: wall,
+            });
+          }
+        }
+        breakpointsData = bps;
+        return data;
+      }
+
+      function parseUiLog(text) {
+        const data = [];
+        for (const line of text.split("\n")) {
+          const m = line.match(uiLogRegex);
+          if (!m) continue;
+          const [, yy, mm, dd, HH, MM, SS, tMonoStr, type, rawMessage] = m;
+          const wall = buildWallDate(yy, mm, dd, HH, MM, SS);
+          const entry = {
+            wallTime: wall,
+            tMono: tMonoStr !== undefined ? parseFloat(tMonoStr) : null,
+            timestamp: wall,
+            type: type.trim(),
+            message: rawMessage.trim(),
+            canonicalMessage: rawMessage.trim(),
+            raw: line,
+          };
+          if (entry.type === "Function") {
+            const dm = rawMessage.match(functionDetailRegex);
+            if (dm) entry.message = dm[2].trim();
+            entry.canonicalMessage = entry.message.split("(")[0].trim();
+          } else if (entry.type === "Event") {
+            const dm = rawMessage.match(eventDetailRegex);
+            if (dm) entry.message = dm[1].trim();
+            entry.canonicalMessage = entry.message.split(":")[0].trim();
+          } else {
+            entry.canonicalMessage = entry.message;
+          }
+          // EventDebug_* shims are spy-only forwarders that fire alongside the
+          // real Event entries; they would inflate burst counts and pollute
+          // the suspicious-events ranking with duplicates of every observed
+          // event, so drop them at parse time.
+          if (entry.canonicalMessage.indexOf("EventDebug_") === 0) continue;
+          data.push(entry);
+        }
+        return data;
+      }
+
+      // Pick (wall, tMono) anchor from the earliest record carrying tMono.
+      // Elapsed log wins when present so the chart x-axis stays aligned with
+      // the dataset that drives stats; UI log is the fallback so projection
+      // still works if only the UI log was prefixed.
+      function recomputeAnchor() {
+        anchor = null;
+        for (const e of elapsedData) {
+          if (e.tMono !== null) {
+            anchor = { wallMs: e.wallTime.getTime(), t0: e.tMono };
+            break;
+          }
+        }
+        if (!anchor) {
+          for (const e of uiLogRaw) {
+            if (e.tMono !== null) {
+              anchor = { wallMs: e.wallTime.getTime(), t0: e.tMono };
+              break;
+            }
+          }
+        }
+      }
+
+      function projectEntry(e) {
+        if (anchor && e.tMono !== null) {
+          e.timestamp = new Date(anchor.wallMs + (e.tMono - anchor.t0) * 1000);
+        } else {
+          e.timestamp = e.wallTime;
+        }
+      }
+
+      function applyAnchorProjection() {
+        recomputeAnchor();
+        for (const e of elapsedData) projectEntry(e);
+        for (const e of breakpointsData) projectEntry(e);
+        for (const e of uiLogRaw) projectEntry(e);
+        updatePrecisionBadge();
+      }
+
+      // Clip uiLogRaw to the elapsed log's projected time range so consumers
+      // (event index, burst trace, suspicious ranking, spike inspector) never
+      // see entries outside the chart's x-axis. Falls back to the full set
+      // when no elapsed log is loaded yet.
+      function applyUiLogFilter() {
+        if (uiLogRaw.length === 0) {
+          uiLogData = [];
+          uiLogClipped = 0;
+          return;
+        }
+        if (elapsedData.length === 0) {
+          uiLogData = uiLogRaw.slice();
+          uiLogClipped = 0;
+          return;
+        }
+        const lo = elapsedData[0].timestamp.getTime();
+        const hi = elapsedData[elapsedData.length - 1].timestamp.getTime();
+        uiLogData = uiLogRaw.filter((e) => {
+          const v = e.timestamp.getTime();
+          return v >= lo && v <= hi;
+        });
+        uiLogClipped = uiLogRaw.length - uiLogData.length;
+      }
+
+      function refreshUiSubtitle() {
+        if (uiLogRaw.length === 0) return;
+        const baseName = uiLogFileName
+          ? `<span style="color: var(--text-0)">${escapeHtml(uiLogFileName)}</span> · `
+          : "";
+        const clippedNote =
+          uiLogClipped > 0
+            ? ` · <span style="color: var(--text-3)">${uiLogClipped.toLocaleString()} outside elapsed range skipped</span>`
+            : "";
+        uiSubtitleEl.innerHTML = `${baseName}${uiLogData.length.toLocaleString()} entries · ${eventIndex.length.toLocaleString()} unique${clippedNote}`;
+      }
+
+      function updatePrecisionBadge() {
+        const hasMono =
+          (elapsedData.length > 0 && elapsedData.some((e) => e.tMono !== null)) ||
+          (uiLogRaw.length > 0 && uiLogRaw.some((e) => e.tMono !== null));
+        if (hasMono) {
+          precisionBadgeEl.className = "precision-badge hi";
+          precisionBadgeEl.textContent = "sub-second precision";
+        } else {
+          precisionBadgeEl.className = "precision-badge lo";
+          precisionBadgeEl.textContent = "1s precision";
+        }
+        if (anchor) {
+          anchorInfoEl.textContent = `anchor: t=${anchor.t0.toFixed(4)}s @ ${formatTime(new Date(anchor.wallMs))}`;
+        } else {
+          anchorInfoEl.textContent = "no monotonic anchor";
+        }
+      }
+
+      function buildEventIndex(logData) {
+        const byCanonical = new Map();
+        for (const e of logData) {
+          let bucket = byCanonical.get(e.canonicalMessage);
+          if (!bucket) {
+            bucket = { canonical: e.canonicalMessage, type: e.type, count: 0, timestamps: [], tMonos: [] };
+            byCanonical.set(e.canonicalMessage, bucket);
+          }
+          bucket.count++;
+          bucket.timestamps.push(e.timestamp);
+          bucket.tMonos.push(e.tMono);
+        }
+        return [...byCanonical.values()].sort((a, b) => b.count - a.count);
+      }
+
+      async function handleElapsedFile(file) {
+        chartDropZone.style.display = "none";
+        setStatus("reading elapsed log...", "load");
+        try {
+          const text = await readFileAsText(file);
+          elapsedData = parseElapsedLog(text);
+          if (elapsedData.length === 0) throw new Error("No elapsed samples parsed.");
+          suspiciousDismissed = false;
+          applyAnchorProjection();
+          applyUiLogFilter();
+          if (uiLogRaw.length > 0) {
+            eventIndex = buildEventIndex(uiLogData);
+            refreshUiSubtitle();
+            renderEventList();
+            renderActiveLegend();
+          }
+          plotData(elapsedData);
+          updateChartTitleRange(elapsedData);
+          controlsRowEl.classList.remove("hidden");
+          recomputeSpikeAnalytics();
+          setStatus(`${elapsedData.length} elapsed samples loaded`, "ok");
+        } catch (err) {
+          console.error(err);
+          setStatus(`error: ${err.message}`, "err");
+          Plotly.purge(chartEl);
+          chartEl.innerHTML = "";
+          chartEl.appendChild(chartDropZone);
+          chartDropZone.style.display = "flex";
+          elapsedData = [];
+          applyUiLogFilter();
+          if (uiLogRaw.length > 0) {
+            eventIndex = buildEventIndex(uiLogData);
+            refreshUiSubtitle();
+            renderEventList();
+          }
+        }
+      }
+
+      async function handleUiFile(file) {
+        uiDropZone.style.display = "none";
+        uiSubtitleEl.textContent = "reading...";
+        setStatus("reading UI log...", "load");
+        try {
+          const text = await readFileAsText(file);
+          uiLogRaw = parseUiLog(text);
+          uiLogFileName = file.name;
+          suspiciousDismissed = false;
+          applyAnchorProjection();
+          applyUiLogFilter();
+          eventIndex = buildEventIndex(uiLogData);
+          refreshUiSubtitle();
+          uiControlsEl.classList.remove("hidden");
+          typeFiltersEl.classList.remove("hidden");
+          eventListEl.classList.remove("hidden");
+          renderEventList();
+          renderActiveLegend();
+          if (elapsedData.length > 0) {
+            plotData(elapsedData);
+            applyAllOverlays();
+            recomputeSpikeAnalytics();
+          }
+          setStatus(`${uiLogData.length} UI entries loaded`, "ok");
+        } catch (err) {
+          console.error(err);
+          setStatus(`error: ${err.message}`, "err");
+          uiDropZone.style.display = "flex";
+          uiControlsEl.classList.add("hidden");
+          typeFiltersEl.classList.add("hidden");
+          eventListEl.classList.add("hidden");
+          uiSubtitleEl.textContent = UI_SUBTITLE_DEFAULT;
+          uiLogRaw = [];
+          uiLogData = [];
+          uiLogClipped = 0;
+          uiLogFileName = "";
+          eventIndex = [];
+        }
+      }
+
+      function getSpikeThreshold() {
+        const v = parseFloat(spikeThresholdEl.value);
+        return isFinite(v) && v >= 0 ? v : 0.05;
+      }
+
+      function xValueOf(entry) {
+        return entry.timestamp;
+      }
+
+      function buildElapsedTrace(data) {
+        const xs = data.map(xValueOf);
+        return {
+          x: xs,
+          y: data.map((d) => d.elapsed),
+          mode: "lines+markers",
+          type: "scatter",
+          name: "Elapsed",
+          marker: { color: "#9ca3af", size: 3 },
+          line: { color: "#9ca3af", width: 1 },
+          hovertemplate: "%{y:.6f}s · %{x|%H:%M:%S.%L}<extra></extra>",
+        };
+      }
+
+      function plotData(data) {
+        Plotly.purge(chartEl);
+        burstTraceVisible = false;
+
+        const traces = [buildElapsedTrace(data)];
+
+        const layout = {
+          xaxis: {
+            title: "",
+            type: "date",
+            gridcolor: "#2c2c2c",
+            linecolor: "#3a3a3a",
+            zerolinecolor: "#3a3a3a",
+            tickcolor: "#3a3a3a",
+          },
+          yaxis: {
+            title: "elapsed (s)",
+            gridcolor: "#2c2c2c",
+            linecolor: "#3a3a3a",
+            zerolinecolor: "#3a3a3a",
+            tickcolor: "#3a3a3a",
+          },
+          yaxis2: {
+            title: "events / bucket",
+            overlaying: "y",
+            side: "right",
+            showgrid: false,
+            tickcolor: "#3a3a3a",
+            color: "#7aa6c2",
+          },
+          shapes: buildAllShapes(),
+          hovermode: "closest",
+          paper_bgcolor: "#232323",
+          plot_bgcolor: "#1a1a1a",
+          font: { color: "#c8c8c8", family: "Inter, system-ui, sans-serif", size: 11 },
+          margin: { l: 60, r: 60, t: 20, b: 50 },
+          showlegend: false,
+        };
+
+        Plotly.newPlot(chartEl, traces, layout, { responsive: true, displaylogo: false });
+        attachChartHandlers();
+        if (toggleBurstEl.checked) refreshBurstTrace();
+      }
+
+      function attachChartHandlers() {
+        chartEl.removeAllListeners && chartEl.removeAllListeners("plotly_click");
+        chartEl.removeAllListeners && chartEl.removeAllListeners("plotly_relayout");
+        chartEl.on("plotly_click", (e) => {
+          if (!e || !e.points || e.points.length === 0) return;
+          const p = e.points[0];
+          if (p.curveNumber === 0) {
+            openSpikeInspector(p.pointIndex);
+            return;
+          }
+          // Burst histogram is the only other trace; route bar clicks into
+          // the bucket inspector. p.x is the bar's center in ms-since-epoch
+          // when the x-axis is a date axis.
+          if (burstTraceVisible && p.curveNumber === 1) {
+            const centerMs = p.x instanceof Date ? p.x.getTime() : new Date(p.x).getTime();
+            openEventBucketInspector(centerMs);
+          }
+        });
+        chartEl.on("plotly_relayout", (ev) => {
+          if (!toggleBurstEl.checked) return;
+          // Plotly emits xaxis.range[0] / xaxis.range[1] on zoom/pan; refresh
+          // the burst trace so bucket density reflects the new visible span.
+          if (ev["xaxis.range[0]"] !== undefined || ev["xaxis.autorange"] !== undefined) {
+            refreshBurstTrace();
+          }
+        });
+      }
+
+      function buildAllShapes() {
+        const shapes = [];
+
+        // breakpoints
+        for (const bp of breakpointsData) {
+          const x = bp.timestamp;
+          shapes.push({
+            type: "line",
+            x0: x,
+            x1: x,
+            y0: 0,
+            y1: 1,
+            yref: "paper",
+            line: { color: "rgba(201, 116, 116, 0.7)", width: 1.5, dash: "dot" },
+          });
+        }
+
+        // spike shading
+        if (toggleSpikeShadingEl.checked && spikeWindows.length > 0) {
+          for (const w of spikeWindows) {
+            const x0 = new Date(w.start);
+            const x1 = new Date(w.end);
+            shapes.push({
+              type: "rect",
+              x0,
+              x1,
+              y0: 0,
+              y1: 1,
+              yref: "paper",
+              fillcolor: "rgba(201, 116, 116, 0.10)",
+              line: { width: 0 },
+            });
+          }
+        }
+
+        // event overlays
+        for (const [, info] of activeOverlays) {
+          const ts = info.timestamps;
+          for (let i = 0; i < ts.length; i++) {
+            const x = ts[i];
+            shapes.push({
+              type: "line",
+              x0: x,
+              x1: x,
+              y0: 0,
+              y1: 1,
+              yref: "paper",
+              line: { color: info.color, width: 1, dash: "dot" },
+            });
+          }
+        }
+
+        return shapes;
+      }
+
+      function refreshBurstTrace() {
+        if (!chartEl.layout) return;
+        if (!toggleBurstEl.checked || uiLogData.length === 0) {
+          // remove trace if present
+          if (burstTraceVisible) {
+            const numTraces = (chartEl.data || []).length;
+            if (numTraces > 1) Plotly.deleteTraces(chartEl, [numTraces - 1]);
+            burstTraceVisible = false;
+          }
+          lastBurstBucketMs = 0;
+          bucketInspectorPanel.classList.add("hidden");
+          return;
+        }
+
+        const xa = chartEl.layout.xaxis || {};
+        let lo, hi;
+        if (xa.range && xa.range.length === 2) {
+          lo = new Date(xa.range[0]).getTime();
+          hi = new Date(xa.range[1]).getTime();
+        } else {
+          if (elapsedData.length === 0) return;
+          lo = elapsedData[0].timestamp.getTime();
+          hi = elapsedData[elapsedData.length - 1].timestamp.getTime();
+        }
+
+        const span = hi - lo;
+        if (!(span > 0)) return;
+
+        const TARGET_BUCKETS = 200;
+        const bucketSize = Math.max(16, Math.min(1000, span / TARGET_BUCKETS));
+        lastBurstBucketMs = bucketSize;
+
+        const nBuckets = Math.ceil(span / bucketSize) + 1;
+        const counts = new Array(nBuckets).fill(0);
+        for (const e of uiLogData) {
+          const v = e.timestamp.getTime();
+          if (v === null || v === undefined || v < lo || v > hi) continue;
+          const k = Math.floor((v - lo) / bucketSize);
+          if (k >= 0 && k < nBuckets) counts[k]++;
+        }
+
+        const xs = [],
+          ys = [];
+        for (let k = 0; k < nBuckets; k++) {
+          if (counts[k] === 0) continue;
+          const center = lo + (k + 0.5) * bucketSize;
+          xs.push(new Date(center));
+          ys.push(counts[k]);
+        }
+
+        const trace = {
+          x: xs,
+          y: ys,
+          type: "bar",
+          name: "events / bucket",
+          yaxis: "y2",
+          marker: { color: "rgba(122, 166, 194, 0.45)" },
+          hovertemplate: "%{y} events · %{x|%H:%M:%S.%L}<extra></extra>",
+        };
+
+        if (burstTraceVisible) {
+          const numTraces = (chartEl.data || []).length;
+          Plotly.deleteTraces(chartEl, [numTraces - 1]);
+        }
+        Plotly.addTraces(chartEl, trace);
+        burstTraceVisible = true;
+      }
+
+      function updateChartTitleRange(data) {
+        if (data.length === 0) {
+          chartTitleEl.textContent = "OnUpdate Elapsed Time";
+          return;
+        }
+        const start = data[0].timestamp;
+        const end = data[data.length - 1].timestamp;
+        chartTitleEl.innerHTML = `OnUpdate Elapsed Time <span class="panel-subtitle ml-2">${formatTime(start)} -> ${formatTime(end)} (${formatDuration(end - start)})</span>`;
+      }
+
+      function renderEventList() {
+        const query = eventSearchEl.value.trim().toLowerCase();
+        const filtered = eventIndex.filter((e) => {
+          if (activeTypeFilter !== "all" && e.type !== activeTypeFilter) return false;
+          if (query && !e.canonical.toLowerCase().includes(query)) return false;
+          return true;
+        });
+
+        if (filtered.length === 0) {
+          eventListEl.innerHTML = `<div class="p-6 text-center" style="color: var(--text-3)">No events match.</div>`;
+          return;
+        }
+
+        const frag = document.createDocumentFragment();
+        for (const ev of filtered) {
+          const row = document.createElement("div");
+          row.className = "event-row";
+          if (activeOverlays.has(ev.canonical)) row.classList.add("active");
+          row.dataset.canonical = ev.canonical;
+
+          const typeClass = ev.type === "Event" ? "evt" : ev.type === "Function" ? "fn" : "err";
+          row.innerHTML = `
+            <span class="event-type ${typeClass}">${ev.type}</span>
+            <span class="event-name" title="${escapeHtml(ev.canonical)}">${escapeHtml(ev.canonical)}</span>
+            <span class="event-count">${ev.count.toLocaleString()}</span>
+          `;
+          row.addEventListener("click", () => toggleOverlay(ev));
+          frag.appendChild(row);
+        }
+        eventListEl.innerHTML = "";
+        eventListEl.appendChild(frag);
+      }
+
+      function pickColor() {
+        const used = new Set([...activeOverlays.values()].map((o) => o.color));
+        for (const c of OVERLAY_PALETTE) if (!used.has(c)) return c;
+        return OVERLAY_PALETTE[activeOverlays.size % OVERLAY_PALETTE.length];
+      }
+
+      function toggleOverlay(ev) {
+        if (elapsedData.length === 0) {
+          setStatus("load the elapsed log first", "err");
+          return;
+        }
+        if (activeOverlays.has(ev.canonical)) {
+          activeOverlays.delete(ev.canonical);
+        } else {
+          activeOverlays.set(ev.canonical, {
+            color: pickColor(),
+            timestamps: ev.timestamps,
+            tMonos: ev.tMonos,
+            type: ev.type,
+          });
+        }
+        applyAllOverlays();
+        renderEventList();
+        renderActiveLegend();
+        // Sync .active state on rows in inspector lists that aren't fully
+        // rebuilt by renderEventList (spike inspector, bucket inspector,
+        // suspicious events). Without this, clicking a row over there only
+        // updates the chart and the main UI log list highlight.
+        refreshInspectorRowStates();
+      }
+
+      function refreshInspectorRowStates() {
+        const lists = [spikeInspectorList, bucketInspectorList, suspiciousList];
+        for (const list of lists) {
+          if (!list) continue;
+          const rows = list.querySelectorAll(".event-row[data-canonical]");
+          for (const row of rows) {
+            if (activeOverlays.has(row.dataset.canonical)) {
+              row.classList.add("active");
+            } else {
+              row.classList.remove("active");
+            }
+          }
+        }
+      }
+
+      function applyAllOverlays() {
+        if (!chartEl.layout) return;
+        Plotly.relayout(chartEl, { shapes: buildAllShapes() });
+      }
+
+      function renderActiveLegend() {
+        activeOverlaysEl.innerHTML = "";
+        for (const [canonical, info] of activeOverlays) {
+          const chip = document.createElement("span");
+          chip.className = "legend-chip";
+          chip.innerHTML = `
+            <span class="swatch" style="background:${info.color}"></span>
+            <span>${escapeHtml(canonical)}</span>
+            <span style="color: var(--text-3)">x${info.timestamps.length}</span>
+            <button title="Remove">x</button>
+          `;
+          chip.querySelector("button").addEventListener("click", (e) => {
+            e.stopPropagation();
+            activeOverlays.delete(canonical);
+            applyAllOverlays();
+            renderEventList();
+            renderActiveLegend();
+          });
+          activeOverlaysEl.appendChild(chip);
+        }
+      }
+
+      // Build a sorted list of spike windows around every elapsed sample whose
+      // duration exceeds the threshold. Window half-width is the sample's own
+      // elapsed (in ms) so the inspector shows what fired during the freeze
+      // itself, not arbitrary neighbours. Total spike vs normal duration is
+      // tracked here so anomaly ranking can normalize event counts by exposure.
+      function recomputeSpikeAnalytics() {
+        const threshold = getSpikeThreshold();
+        spikeWindows = [];
+
+        if (elapsedData.length === 0) {
+          spikeTotalMs = 0;
+          normalTotalMs = 0;
+          renderSuspicious();
+          applyAllOverlays();
+          return;
+        }
+
+        for (let i = 0; i < elapsedData.length; i++) {
+          const e = elapsedData[i];
+          if (e.elapsed <= threshold) continue;
+          const tMs = e.timestamp.getTime();
+          const wMs = Math.max(50, e.elapsed * 1000); // floor so 50ms+ windows are still visible
+          const win = {
+            start: tMs - wMs - SPIKE_WINDOW_LEFT_PAD_MS - SPIKE_WINDOW_SLOP_MS,
+            end: tMs + wMs + SPIKE_WINDOW_SLOP_MS,
+            tMonoStart: e.tMono !== null ? e.tMono - e.elapsed : null,
+            tMonoEnd: e.tMono !== null ? e.tMono + e.elapsed : null,
+            elapsed: e.elapsed,
+            sampleIndex: i,
+          };
+          spikeWindows.push(win);
+        }
+
+        // Approximate union by sorting + merging so total spike duration is
+        // not double-counted when adjacent freezes overlap. This keeps the
+        // anomaly score's denominator honest.
+        const merged = [];
+        const sortedWins = spikeWindows.slice().sort((a, b) => a.start - b.start);
+        for (const w of sortedWins) {
+          const last = merged[merged.length - 1];
+          if (last && w.start <= last.end) {
+            if (w.end > last.end) last.end = w.end;
+          } else {
+            merged.push({ start: w.start, end: w.end });
+          }
+        }
+        spikeTotalMs = merged.reduce((acc, m) => acc + (m.end - m.start), 0);
+
+        const sessionStart = elapsedData[0].timestamp.getTime();
+        const sessionEnd = elapsedData[elapsedData.length - 1].timestamp.getTime();
+        const sessionMs = Math.max(1, sessionEnd - sessionStart);
+        normalTotalMs = Math.max(1, sessionMs - spikeTotalMs);
+
+        renderSuspicious();
+        applyAllOverlays();
+      }
+
+      function isInSpikeWindow(ts) {
+        // Linear scan; spikeWindows is typically tens to hundreds of entries
+        // even on long sessions so a binary search is overkill here.
+        for (const w of spikeWindows) {
+          if (ts >= w.start && ts <= w.end) return true;
+        }
+        return false;
+      }
+
+      function renderSuspicious() {
+        if (suspiciousDismissed) {
+          suspiciousPanel.classList.add("hidden");
+          return;
+        }
+        if (uiLogData.length === 0 || elapsedData.length === 0 || spikeWindows.length === 0) {
+          suspiciousPanel.classList.add("hidden");
+          return;
+        }
+
+        const spikeRateBase = 1 / spikeTotalMs;
+        const normalRateBase = 1 / normalTotalMs;
+
+        const ranked = [];
+        for (const ev of eventIndex) {
+          let inSpike = 0;
+          for (const ts of ev.timestamps) {
+            if (isInSpikeWindow(ts.getTime())) inSpike++;
+          }
+          if (ev.count < SUSPICIOUS_MIN_SAMPLES) continue;
+          const inNormal = ev.count - inSpike;
+          const spikeRate = inSpike * spikeRateBase;
+          const normalRate = inNormal * normalRateBase;
+          const score = spikeRate / (normalRate + 1e-12);
+          if (inSpike === 0) continue;
+          ranked.push({ ev, inSpike, inNormal, score });
+        }
+        ranked.sort((a, b) => b.score - a.score);
+        const top = ranked.slice(0, SUSPICIOUS_TOP_N);
+
+        suspiciousPanel.classList.remove("hidden");
+        suspiciousCountEl.textContent = `${ranked.length} candidates · ${spikeWindows.length} spike windows · ${(spikeTotalMs / 1000).toFixed(2)}s in spikes`;
+
+        if (top.length === 0) {
+          suspiciousList.innerHTML = `<div class="p-6 text-center" style="color: var(--text-3)">No events fall inside any spike window.</div>`;
+          return;
+        }
+
+        const frag = document.createDocumentFragment();
+        for (const r of top) {
+          const ev = r.ev;
+          const row = document.createElement("div");
+          row.className = "event-row";
+          if (activeOverlays.has(ev.canonical)) row.classList.add("active");
+
+          const typeClass = ev.type === "Event" ? "evt" : ev.type === "Function" ? "fn" : "err";
+          const scoreLabel = r.score >= 1000 ? r.score.toExponential(1) : r.score.toFixed(2);
+          row.dataset.canonical = ev.canonical;
+          row.innerHTML = `
+            <span class="event-type ${typeClass}">${ev.type}</span>
+            <span class="event-name" title="${escapeHtml(ev.canonical)}">${escapeHtml(ev.canonical)}</span>
+            <span class="event-count" title="${r.inSpike} in spike windows / ${r.inNormal} elsewhere">${r.inSpike}/${ev.count}</span>
+            <span class="event-score" title="spike density / baseline density">${scoreLabel}x</span>
+          `;
+          row.addEventListener("click", () => toggleOverlay(ev));
+          frag.appendChild(row);
+        }
+        suspiciousList.innerHTML = "";
+        suspiciousList.appendChild(frag);
+      }
+
+      function openSpikeInspector(sampleIndex) {
+        if (sampleIndex < 0 || sampleIndex >= elapsedData.length) return;
+        const sample = elapsedData[sampleIndex];
+        const threshold = getSpikeThreshold();
+
+        spikeInspectorPanel.classList.remove("hidden");
+
+        if (sample.elapsed <= threshold) {
+          spikeInspectorInfo.innerHTML = `Sample at ${formatTime(sample.timestamp)}.${pad(sample.timestamp.getMilliseconds(), 3)} · elapsed <span style="color: var(--text-0)">${(sample.elapsed * 1000).toFixed(2)}ms</span> · below threshold (${(threshold * 1000).toFixed(0)}ms).`;
+          spikeInspectorList.innerHTML = `<div class="p-6 text-center" style="color: var(--text-3)">Lower the spike threshold to inspect smaller samples.</div>`;
+          return;
+        }
+
+        if (uiLogData.length === 0) {
+          spikeInspectorInfo.textContent = "Load a UI log to see what fired around this spike.";
+          spikeInspectorList.innerHTML = "";
+          return;
+        }
+
+        const tMs = sample.timestamp.getTime();
+        const wMs = Math.max(50, sample.elapsed * 1000);
+        const lo = tMs - wMs - SPIKE_WINDOW_LEFT_PAD_MS - SPIKE_WINDOW_SLOP_MS;
+        const hi = tMs + wMs + SPIKE_WINDOW_SLOP_MS;
+
+        const groups = new Map();
+        for (const e of uiLogData) {
+          const v = e.timestamp.getTime();
+          if (v < lo || v > hi) continue;
+          let g = groups.get(e.canonicalMessage);
+          if (!g) {
+            g = { canonical: e.canonicalMessage, type: e.type, count: 0 };
+            groups.set(e.canonicalMessage, g);
+          }
+          g.count++;
+        }
+        const ranked = [...groups.values()].sort((a, b) => b.count - a.count);
+
+        const leftMs = wMs + SPIKE_WINDOW_LEFT_PAD_MS + SPIKE_WINDOW_SLOP_MS;
+        const rightMs = wMs + SPIKE_WINDOW_SLOP_MS;
+        spikeInspectorInfo.innerHTML = `Spike at ${formatTime(sample.timestamp)}.${pad(sample.timestamp.getMilliseconds(), 3)} · elapsed <span style="color: var(--spike); font-weight: 600;">${(sample.elapsed * 1000).toFixed(2)}ms</span> · window -${leftMs.toFixed(0)}ms / +${rightMs.toFixed(0)}ms · ${ranked.length} unique events`;
+
+        if (ranked.length === 0) {
+          spikeInspectorList.innerHTML = `<div class="p-6 text-center" style="color: var(--text-3)">No UI log entries inside the spike window.</div>`;
+          return;
+        }
+
+        const frag = document.createDocumentFragment();
+        for (const g of ranked) {
+          const idxEntry = eventIndex.find((e) => e.canonical === g.canonical);
+          const row = document.createElement("div");
+          row.className = "event-row";
+          if (activeOverlays.has(g.canonical)) row.classList.add("active");
+
+          const typeClass = g.type === "Event" ? "evt" : g.type === "Function" ? "fn" : "err";
+          row.dataset.canonical = g.canonical;
+          row.innerHTML = `
+            <span class="event-type ${typeClass}">${g.type}</span>
+            <span class="event-name" title="${escapeHtml(g.canonical)}">${escapeHtml(g.canonical)}</span>
+            <span class="event-count">${g.count}</span>
+          `;
+          if (idxEntry) row.addEventListener("click", () => toggleOverlay(idxEntry));
+          frag.appendChild(row);
+        }
+        spikeInspectorList.innerHTML = "";
+        spikeInspectorList.appendChild(frag);
+      }
+
+      function openEventBucketInspector(centerMs) {
+        if (!isFinite(centerMs) || lastBurstBucketMs <= 0) return;
+        if (uiLogData.length === 0) return;
+
+        const halfMs = lastBurstBucketMs / 2;
+        const lo = centerMs - halfMs;
+        const hi = centerMs + halfMs;
+
+        bucketInspectorPanel.classList.remove("hidden");
+
+        const groups = new Map();
+        let total = 0;
+        for (const e of uiLogData) {
+          const v = e.timestamp.getTime();
+          if (v < lo || v > hi) continue;
+          let g = groups.get(e.canonicalMessage);
+          if (!g) {
+            g = { canonical: e.canonicalMessage, type: e.type, count: 0 };
+            groups.set(e.canonicalMessage, g);
+          }
+          g.count++;
+          total++;
+        }
+        const ranked = [...groups.values()].sort((a, b) => b.count - a.count);
+
+        bucketLastEntries = ranked;
+        bucketLastCanonicals = new Set(groups.keys());
+
+        const center = new Date(centerMs);
+        const startD = new Date(lo);
+        const endD = new Date(hi);
+        bucketInspectorInfo.innerHTML =
+          `Bucket centered at ${formatTime(center)}.${pad(center.getMilliseconds(), 3)} ` +
+          `· width <span style="color: var(--text-0)">${lastBurstBucketMs.toFixed(0)}ms</span> ` +
+          `· ${formatTime(startD)}.${pad(startD.getMilliseconds(), 3)} -> ` +
+          `${formatTime(endD)}.${pad(endD.getMilliseconds(), 3)} ` +
+          `· <span style="color: var(--text-0)">${total}</span> entries · ${ranked.length} unique`;
+
+        renderBucketList();
+      }
+
+      function renderBucketList() {
+        if (bucketLastEntries.length === 0) {
+          bucketInspectorList.innerHTML = `<div class="p-6 text-center" style="color: var(--text-3)">No UI log entries inside this bucket.</div>`;
+          return;
+        }
+
+        const query = bucketEventSearchEl.value.trim().toLowerCase();
+        const filtered = bucketLastEntries.filter((g) => {
+          if (bucketActiveTypeFilter !== "all" && g.type !== bucketActiveTypeFilter) return false;
+          if (query && !g.canonical.toLowerCase().includes(query)) return false;
+          return true;
+        });
+
+        if (filtered.length === 0) {
+          bucketInspectorList.innerHTML = `<div class="p-6 text-center" style="color: var(--text-3)">No events match.</div>`;
+          return;
+        }
+
+        const frag = document.createDocumentFragment();
+        for (const g of filtered) {
+          const idxEntry = eventIndex.find((e) => e.canonical === g.canonical);
+          const row = document.createElement("div");
+          row.className = "event-row";
+          if (activeOverlays.has(g.canonical)) row.classList.add("active");
+
+          const typeClass = g.type === "Event" ? "evt" : g.type === "Function" ? "fn" : "err";
+          row.dataset.canonical = g.canonical;
+          row.innerHTML = `
+            <span class="event-type ${typeClass}">${g.type}</span>
+            <span class="event-name" title="${escapeHtml(g.canonical)}">${escapeHtml(g.canonical)}</span>
+            <span class="event-count">${g.count}</span>
+          `;
+          if (idxEntry) row.addEventListener("click", () => toggleOverlay(idxEntry));
+          frag.appendChild(row);
+        }
+        bucketInspectorList.innerHTML = "";
+        bucketInspectorList.appendChild(frag);
+      }
+
+      // ---------- event wiring ----------
+
+      eventSearchEl.addEventListener("input", renderEventList);
+      clearOverlaysBtn.addEventListener("click", () => {
+        activeOverlays.clear();
+        applyAllOverlays();
+        renderEventList();
+        renderActiveLegend();
+      });
+      document.querySelectorAll("#type-filters .filter-tab").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll("#type-filters .filter-tab").forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          activeTypeFilter = btn.dataset.type;
+          renderEventList();
+        });
+      });
+
+      bucketEventSearchEl.addEventListener("input", renderBucketList);
+      document.querySelectorAll("#bucket-type-filters .filter-tab").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll("#bucket-type-filters .filter-tab").forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          bucketActiveTypeFilter = btn.dataset.type;
+          renderBucketList();
+        });
+      });
+      bucketClearOverlaysBtn.addEventListener("click", () => {
+        if (bucketLastCanonicals.size === 0) return;
+        for (const canonical of bucketLastCanonicals) {
+          activeOverlays.delete(canonical);
+        }
+        applyAllOverlays();
+        renderEventList();
+        renderActiveLegend();
+        renderBucketList();
+      });
+
+      spikeThresholdEl.addEventListener("change", () => {
+        recomputeSpikeAnalytics();
+      });
+      toggleBurstEl.addEventListener("change", () => {
+        refreshBurstTrace();
+      });
+      toggleSpikeShadingEl.addEventListener("change", () => {
+        applyAllOverlays();
+      });
+      spikeInspectorClose.addEventListener("click", () => {
+        spikeInspectorPanel.classList.add("hidden");
+      });
+      bucketInspectorClose.addEventListener("click", () => {
+        bucketInspectorPanel.classList.add("hidden");
+      });
+      suspiciousClose.addEventListener("click", () => {
+        suspiciousDismissed = true;
+        suspiciousPanel.classList.add("hidden");
+      });
+
+      // ---------- helpers ----------
+
+      function setStatus(message, kind = "info") {
+        statusEl.textContent = message;
+        statusEl.classList.remove("ok", "err", "load");
+        if (kind === "ok" || kind === "err" || kind === "load") statusEl.classList.add(kind);
+      }
+
+      function formatTime(date) {
+        if (!date) return "--";
+        return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+      }
+
+      function pad(n, l = 2) {
+        return String(n).padStart(l, "0");
+      }
+
+      function formatDuration(ms) {
+        const s = Math.floor(ms / 1000);
+        const m = Math.floor(s / 60);
+        return m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
+      }
+
+      function escapeHtml(s) {
+        return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      }
+    </script>
+  </body>
+</html>
