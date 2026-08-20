@@ -16,7 +16,9 @@ To keep logs compact without losing spikes, samples below 200 ms are written onc
 perfmon_2025_11_03_175617_elapsed.log
 ```
 
-Each entry also includes a session-relative timestamp. This lets the analyzer align elapsed samples with UI events at sub-second precision. Older logs without these timestamps remain supported at one-second precision.
+While recording, PerfMon advances a session-relative monotonic clock on every `OnUpdate` and writes `[t=...]` markers to elapsed samples, UI-log events, function calls, errors, and breakpoints. `PerfMon.html` uses those markers to project both logs onto a shared sub-second timeline, and its precision badge shows when monotonic timing has been detected.
+
+This precision is frame-level: entries emitted during the same frame share a timestamp. Older logs and individual entries without monotonic markers remain supported using the game's one-second wall-clock timestamps.
 
 ## Usage
 

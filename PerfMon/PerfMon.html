@@ -617,8 +617,10 @@
       // the most recent monotonic value.
       const elapsedLogRegex =
         /\[(\d{2})\/(\d{2})\/(\d{2})\]\[(\d{2}):(\d{2}):(\d{2})\]\s+(?:\[t=([\d\.]+)\]\s+)*([\d\.]+)\s*$/;
+      // Depending on which game logging API emitted an entry, the filter label
+      // can be written before or after PerfMon's payload-level time prefix.
       const uiLogRegex =
-        /\[(\d{2})\/(\d{2})\/(\d{2})\]\[(\d{2}):(\d{2}):(\d{2})\]\s+(?:\[t=([\d\.]+)\]\s+)*\[(.*?)\]:\s*(.*)/;
+        /\[(\d{2})\/(\d{2})\/(\d{2})\]\[(\d{2}):(\d{2}):(\d{2})\]\s+(?:\[t=([\d\.]+)\]\s+)*\[(.*?)\]:\s*(?:\[t=([\d\.]+)\]\s+)*(.*)/;
       const breakpointRegex =
         /\[(\d{2})\/(\d{2})\/(\d{2})\]\[(\d{2}):(\d{2}):(\d{2})\]\s+(?:\[t=([\d\.]+)\]\s+)*BREAKPOINT/;
       const functionDetailRegex = /\((.*?)\):\s*(.*)/;
@@ -705,7 +707,8 @@
         for (const line of text.split("\n")) {
           const m = line.match(uiLogRegex);
           if (!m) continue;
-          const [, yy, mm, dd, HH, MM, SS, tMonoStr, type, rawMessage] = m;
+          const [, yy, mm, dd, HH, MM, SS, tMonoBeforeType, type, tMonoAfterType, rawMessage] = m;
+          const tMonoStr = tMonoAfterType !== undefined ? tMonoAfterType : tMonoBeforeType;
           const wall = buildWallDate(yy, mm, dd, HH, MM, SS);
           const entry = {
             wallTime: wall,
