@@ -6,8 +6,6 @@ PerfMon is a lightweight watchdog addon that records frame-time gaps in the Lua 
 
 It is designed for _Warhammer Online: Age of Reckoning_, whose interface and community addons run through a Lua-based UI system. PerfMon helps players and addon authors investigate stutters that may originate in that interface while playing on the Return of Reckoning server.
 
-[Download PerfMon 41](https://mega.nz/file/N3wm1R5D#PtDfj89aBexS55BQkS3q9JiZk_NixCv9IwdcJkz6Isg)
-
 ## How it works
 
 PerfMon measures **elapsed time**: the gap, in milliseconds, between two successive `OnUpdate` callbacks. A large gap means the client spent more time between frames.
