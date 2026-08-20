@@ -5,6 +5,28 @@ local dump=false;
 
 TextLogAddFilterType ("UiLog", 11, L"[Event]:")
 
+-- Some RoR clients expose PlaySound/GameData.Sound but not the older Sound API
+-- used by EA UI XML sound scripts and legacy addons.
+if Sound == nil then
+    Sound = {}
+    setmetatable(Sound,
+    {
+        __index = function(_, key)
+            if GameData and GameData.Sound then
+                return GameData.Sound[key]
+            end
+        end
+    })
+end
+
+if Sound.Play == nil then
+    function Sound.Play(soundId)
+        if PlaySound ~= nil and soundId ~= nil then
+            PlaySound(soundId)
+        end
+    end
+end
+
 --------------------------------------
 function CHAT_DEBUG( text )
     TextLogAddEntry( "Chat", 100, text )
