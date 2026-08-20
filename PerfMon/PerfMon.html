@@ -1,0 +1,1262 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WAR UI Performance Analyzer</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Plotly.js for charting (updated version) -->
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+    <style>
+      /* Custom dark theme */
+      body {
+        font-family: "Inter", sans-serif;
+      }
+      .dark {
+        background-color: #111827;
+        color: #d1d5db;
+      }
+      .card {
+        background-color: #1f2937;
+        border-radius: 0.5rem;
+        padding: 1.5rem;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+      }
+
+      /* New Drop Zone Styles */
+      .drop-zone-placeholder {
+        border: 2px dashed #4b5563;
+        border-radius: 0.5rem;
+        padding: 2.5rem 1.5rem;
+        text-align: center;
+        cursor: pointer;
+        transition: border-color 0.2s, background-color 0.2s;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        min-height: 300px; /* Ensure dropzone has height */
+      }
+      .drop-zone-placeholder.drag-over {
+        border-color: #3b82f6;
+        background-color: #374151;
+      }
+      /* Make chart and analysis containers clickable */
+      #chart,
+      #analysis {
+        cursor: pointer;
+      }
+
+      .log-line {
+        font-family: "Courier New", Courier, monospace;
+        font-size: 0.875rem;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.25rem;
+        margin-bottom: 0.25rem;
+        color: #000000;
+      }
+      .log-event {
+        color: rgb(242, 169, 53);
+        background-color: #374151;
+      }
+      .log-function {
+        color: rgb(44, 206, 44);
+        background-color: #1e293b;
+      }
+      .log-error {
+        color: rgb(206, 44, 44);
+        background-color: #1e293b;
+      }
+      /*  Styles for clickable log lines */
+      .log-line-clickable {
+        cursor: pointer;
+        transition: background-color 0.2s;
+      }
+      .log-line-clickable:hover {
+        filter: brightness(1.2);
+      }
+
+      /* New Textarea Style */
+      .dark-textarea {
+        background-color: #374151;
+        color: #d1d5db;
+        border: 1px solid #4b5563;
+        border-radius: 0.375rem;
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        font-family: "Courier New", Courier, monospace;
+        font-size: 0.875rem;
+      }
+      .dark-textarea:focus {
+        outline: none;
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 1px #3b82f6;
+      }
+      /* New Input Number Style */
+      .dark-input-number {
+        background-color: #374151;
+        color: #d1d5db;
+        border: 1px solid #4b5563;
+        border-radius: 0.375rem;
+        padding: 0.5rem 0.75rem;
+      }
+      .dark-input-number:focus {
+        outline: none;
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 1px #3b82f6;
+      }
+      /* Plotly dark theme override */
+      .plotly .bg {
+        fill: #1f2937 !important;
+      }
+      .plotly .gridlayer {
+        fill: #1f2937 !important;
+      }
+      /* Spinner */
+      .spinner {
+        animation: spin 1s linear infinite;
+        border-color: #fff transparent transparent transparent;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      /* Reusable spinner placeholder for analysis boxes */
+      .spinner-placeholder {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        min-height: 150px;
+      }
+      /* Stats grid */
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 1rem;
+      }
+      .stat-item {
+        background-color: #374151;
+        padding: 1rem;
+        border-radius: 0.375rem;
+      }
+      .stat-title {
+        font-size: 0.875rem;
+        color: #9ca3af;
+        margin-bottom: 0.25rem;
+      }
+      .stat-value {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: #ffffff;
+      }
+      .card-toggle-header {
+        cursor: pointer;
+        user-select: none; /* Prevents text selection on click */
+        position: relative; /* Required for the icon */
+        padding-right: 2.5rem; /* Make space for the icon */
+      }
+      /* Add a chevron icon */
+      .card-toggle-header::after {
+        content: "▲";
+        font-size: 0.8rem;
+        color: #9ca3af; /* gray-400 */
+        position: absolute;
+        right: 1.5rem; /* same as card padding */
+        top: 50%;
+        transform: translateY(-50%);
+        transition: transform 0.2s;
+      }
+      /* Rotate the icon when collapsed */
+      .card-toggle-header.collapsed::after {
+        transform: translateY(-50%) rotate(180deg);
+      }
+    </style>
+  </head>
+  <body class="dark p-4 md:p-8">
+    <!-- Hidden file inputs -->
+    <input id="elapsed-log-input" type="file" accept=".log,.txt" class="hidden" />
+    <input id="ui-log-input" type="file" accept=".log,.txt" class="hidden" />
+
+    <div class="container mx-auto max-w-7xl space-y-6">
+      <header class="card">
+        <h1 class="text-3xl font-bold text-white">WAR UI Performance Analyzer</h1>
+        <p class="text-gray-400 mt-2">
+          Drop your elapsed log onto the chart area and your UI log onto the analysis area to begin.
+        </p>
+        <!-- Status Message -->
+        <div id="status" class="text-gray-400" role="status"></div>
+      </header>
+
+      <!-- Main Content Area: Chart and Analysis -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Chart -->
+        <div class="card lg:col-span-3">
+          <h2 id="elapsed-card-title" class="text-xl font-semibold text-white mb-4">OnUpdate Elapsed Time</h2>
+
+          <div id="chart" class="w-full h-[500px]">
+            <!-- This will be replaced by Plotly or the drop zone -->
+            <div id="chart-drop-zone" class="drop-zone-placeholder text-gray-400">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-16 w-16 text-gray-500 mb-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v13a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"
+                />
+              </svg>
+              <span class="block text-lg font-semibold">Drag & drop Elapsed Time Log here</span>
+              <span class="text-sm text-gray-500">or click to select file</span>
+            </div>
+          </div>
+        </div>
+
+        <!--  Stats Card -->
+        <div id="stats-card" class="card lg:col-span-3 hidden">
+          <div class="stats-grid">
+            <div class="stat-item">
+              <div class="stat-title">Total Samples</div>
+              <div id="stat-samples" class="stat-value">--</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-title">Avg Elapsed</div>
+              <div id="stat-avg" class="stat-value">--</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-title">Min Elapsed</div>
+              <div id="stat-min" class="stat-value">--</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-title">Max Elapsed</div>
+              <div id="stat-max" class="stat-value">--</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-title">95th Percentile</div>
+              <div id="stat-p95" class="stat-value">--</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-title">99th Percentile</div>
+              <div id="stat-p99" class="stat-value">--</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Data Point Analysis -->
+        <div class="card lg:col-span-3">
+          <h2 class="text-xl font-semibold text-white mb-4 card-toggle-header">Data Point Analysis</h2>
+
+          <div id="analysis" class="w-full h-[400px] overflow-y-auto bg-gray-900 rounded-lg p-4 mt-4">
+            <!-- This will be replaced by logs or the drop zone -->
+            <div id="analysis-drop-zone" class="drop-zone-placeholder text-gray-400">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-16 w-16 text-gray-500 mb-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
+              </svg>
+              <span class="block text-lg font-semibold">Drag & drop UI Log here</span>
+              <span class="text-sm text-gray-500">or click to select file</span>
+            </div>
+          </div>
+
+          <!-- Filter Textarea -->
+          <div class="p-4">
+            <label for="filter-textarea" class="block text-sm font-medium text-gray-300 mb-2"
+              >Exclude from analysis (one per line):</label
+            >
+            <textarea
+              id="filter-textarea"
+              rows="4"
+              class="dark-textarea"
+              placeholder="Filter lines containing...
+e.g., PLAYER_HOT_BAR_UPDATED
+BuffHead.OnPlayerPositionUpdated"
+            >
+OnLButtonUpProcessed
+OnLBU
+L_BUTTON_UP_PROCESSED
+EventDebug_PLAYER_HOT_BAR_UPDATED
+UpdateActionButtons
+PLAYER_HOT_BAR_UPDATED
+TexturedButtons.OnHotbarUpdated
+RVAPI_Range.OnPlayerPositionUpdated
+NerfedEngine.OnMove
+BuffHead.OnPlayerPositionUpdated
+UpdateSlotEnabledState
+OnPlayerHotBarEnabledStateChanged
+OnLButtonProcessed
+OnLButtonDownProcessed
+OnRButtonProcessed
+OnRButtonDownProcessed
+PLAYER_MORALE_UPDATED
+PlayerWindow.UpdateCurrentHitPoints
+EventDebug_L_BUTTON_DOWN_PROCESSED</textarea
+            >
+          </div>
+        </div>
+
+        <!-- Differential -->
+        <div class="card lg:col-span-3">
+          <h2 class="text-xl font-semibold text-white mb-4 card-toggle-header">Differential Analysis</h2>
+          <p class="text-gray-400 mb-4">
+            Finds log entries present in a suspicious range that are
+            <strong>not</strong> present in the reference range (low elapsed).
+          </p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div class="space-y-2">
+              <label class="block text-sm font-medium text-gray-300 mb-2">Suspicious Range</label>
+              <div class="flex items-center gap-2">
+                <input id="diff-a" type="text" placeholder="A (e.g., 14:30:05)" class="dark-input-number w-full" />
+                <span class="text-gray-400">to</span>
+                <input id="diff-b" type="text" placeholder="B (e.g., 14:30:10)" class="dark-input-number w-full" />
+              </div>
+            </div>
+            <div class="space-y-2">
+              <label class="block text-sm font-medium text-gray-300 mb-2">Reference Range</label>
+              <div class="flex items-center gap-2">
+                <input id="diff-c" type="text" placeholder="C (e.g., 14:25:00)" class="dark-input-number w-full" />
+                <span class="text-gray-400">to</span>
+                <input id="diff-d" type="text" placeholder="D (e.g., 14:25:05)" class="dark-input-number w-full" />
+              </div>
+            </div>
+          </div>
+
+          <button
+            id="differential-button"
+            class="bg-purple-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-purple-700 transition duration-200 shadow-lg flex items-center justify-center w-48 disabled:opacity-50"
+          >
+            <span>Find Unique Logs</span>
+          </button>
+
+          <div id="differential-results" class="w-full h-[400px] overflow-y-auto bg-gray-900 rounded-lg p-4 mt-4">
+            <div class="flex items-center justify-center h-full text-gray-500">
+              Enter time ranges (HH:MM:SS format) and click "Find Unique Logs".
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- End of Differential -->
+
+      <!-- Correlation Card -->
+      <div class="card lg:col-span-3">
+        <h2 class="text-xl font-semibold text-white mb-4 card-toggle-header">Correlation Analysis</h2>
+        <div class="flex flex-wrap items-end gap-4 mb-4">
+          <div>
+            <label for="correlation-threshold-lower" class="block text-sm font-medium text-gray-300 mb-2"
+              >Lower Threshold (sec)</label
+            >
+            <input
+              id="correlation-threshold-lower"
+              type="number"
+              value="0.1"
+              step="0.01"
+              min="0"
+              class="dark-input-number w-32"
+            />
+          </div>
+          <!--  Upper Threshold Input -->
+          <div>
+            <label for="correlation-threshold-upper" class="block text-sm font-medium text-gray-300 mb-2"
+              >Upper Threshold (sec)</label
+            >
+            <input
+              id="correlation-threshold-upper"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="Optional"
+              class="dark-input-number w-32"
+            />
+          </div>
+          <button
+            id="correlation-button"
+            class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-200 shadow-lg flex items-center justify-center w-48 disabled:opacity-50 disabled:cursor-wait"
+          >
+            <!-- Spinner (hidden by default) -->
+            <svg
+              id="correlation-spinner"
+              class="spinner w-5 h-5 mr-3 border-t-2 border-r-2 rounded-full hidden"
+              viewBox="0 0 24 24"
+            ></svg>
+            <span id="correlation-button-text">Find Common Logs</span>
+          </button>
+        </div>
+
+        <div id="correlation-results" class="w-full h-[400px] overflow-y-auto bg-gray-900 rounded-lg p-4">
+          <div class="flex items-center justify-center h-full text-gray-500">
+            Click "Find Common Logs" to analyze spikes within the threshold range.
+          </div>
+        </div>
+      </div>
+      <!-- end of correlation card -->
+    </div>
+
+    <script>
+      // --- Correlation Worker Script ---
+      const correlationWorkerScriptString = `
+        self.onmessage = function(e) {
+            const { uiLogData, elapsedData, lowerThreshold, upperThreshold, filterStrings } = e.data;
+
+            // Filter spikes based on the new range
+            const spikes = elapsedData.filter(d => {
+                return d.elapsed >= lowerThreshold && d.elapsed <= upperThreshold;
+            });
+
+            const totalSpikes = spikes.length;
+            if (totalSpikes === 0) {
+                self.postMessage({ type: 'result', results: [], totalSpikes: 0 });
+                return;
+            }
+
+            // Initial progress update
+            self.postMessage({
+                type: 'progress',
+                message: \`Found \${totalSpikes} spikes. Starting analysis...\`
+            });
+
+            const logSpikeMap = new Map();
+
+            spikes.forEach((spike, spikeIndex) => {
+                const spikeTimestamp = new Date(spike.timestamp);
+                //const oneSecondBefore = new Date(spikeTimestamp.getTime() - 512);
+                const oneSecondBefore = new Date(spike.timestamp);
+
+                const relevantEvents = uiLogData.filter(event => {
+                    const eventTimestamp = new Date(event.timestamp);
+                    return eventTimestamp >= oneSecondBefore && eventTimestamp <= spikeTimestamp;
+                });
+
+                let filteredEvents = relevantEvents;
+                if (filterStrings.length > 0) {
+                    filteredEvents = relevantEvents.filter(event => {
+                        const isIgnored = filterStrings.some(f => event.raw.includes(f));
+                        return !isIgnored;
+                    });
+                }
+
+                const uniqueMessagesForThisSpike = new Set(filteredEvents.map(e => e.canonicalMessage));
+
+                uniqueMessagesForThisSpike.forEach(canonicalMessage => {
+                    if (!logSpikeMap.has(canonicalMessage)) {
+                        logSpikeMap.set(canonicalMessage, new Set());
+                    }
+                    logSpikeMap.get(canonicalMessage).add(spikeIndex);
+                });
+
+                // ---  Incremental Progress Update ---
+                // Update every 100 spikes or on the last spike
+                if ((spikeIndex + 1) % 100 === 0 || (spikeIndex + 1) === totalSpikes) {
+                     self.postMessage({
+                        type: 'progress',
+                        message: \`Analyzing spike \${spikeIndex + 1} / \${totalSpikes}...\`
+                    });
+                }
+            });
+
+            const results = [...logSpikeMap.entries()]
+                .filter(([message, spikeSet]) => spikeSet.size >= 2)
+                .map(([canonicalMessage, spikeSet]) => {
+                    const originalEvent = uiLogData.find(e => e.canonicalMessage === canonicalMessage);
+                    return {
+                        message: canonicalMessage,
+                        count: spikeSet.size,
+                        type: originalEvent ? originalEvent.type : 'Event'
+                    };
+                })
+                .sort((a, b) => b.count - a.count);
+
+            self.postMessage({ type: 'result', results, totalSpikes });
+        };
+      `;
+      // --- End of Correlation Worker Script ---
+
+      // --- Spike Analysis Worker Script ---
+      const spikeAnalysisWorkerScriptString = `
+        self.onmessage = function(e) {
+            const { uiLogData, filterStrings, clickedTimestamp, oneSecondBefore } = e.data;
+
+            const ts = new Date(clickedTimestamp);
+            const beforeTs = new Date(oneSecondBefore);
+
+            const relevantEvents = uiLogData.filter(event => {
+                const eventTimestamp = new Date(event.timestamp);
+                return eventTimestamp >= beforeTs && eventTimestamp <= ts;
+            });
+            let filteredEvents = relevantEvents;
+            if (filterStrings.length > 0) {
+                filteredEvents = relevantEvents.filter(event => {
+                    const isIgnored = filterStrings.some(f => event.raw.includes(f));
+                    return !isIgnored;
+                });
+            }
+
+            // Sort events by timestamp, most recent last
+            filteredEvents.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+            self.postMessage({ type: 'result', relevantEvents: filteredEvents });
+        };
+        `;
+      // --- End of Spike Analysis Worker Script ---
+
+      // Get DOM elements
+      const elapsedLogInput = document.getElementById("elapsed-log-input");
+      const uiLogInput = document.getElementById("ui-log-input");
+      const statusEl = document.getElementById("status");
+      const chartEl = document.getElementById("chart");
+      const analysisEl = document.getElementById("analysis");
+      const chartDropZone = document.getElementById("chart-drop-zone");
+      const analysisDropZone = document.getElementById("analysis-drop-zone");
+      const filterTextarea = document.getElementById("filter-textarea");
+
+      //  Stats elements
+      const statsCard = document.getElementById("stats-card");
+      const statSamples = document.getElementById("stat-samples");
+      const statAvg = document.getElementById("stat-avg");
+      const statMin = document.getElementById("stat-min");
+      const statMax = document.getElementById("stat-max");
+      const statP95 = document.getElementById("stat-p95");
+      const statP99 = document.getElementById("stat-p99");
+
+      // Correlation elements
+      const correlationThresholdLowerInput = document.getElementById("correlation-threshold-lower");
+      const correlationThresholdUpperInput = document.getElementById("correlation-threshold-upper");
+      const correlationButton = document.getElementById("correlation-button");
+      const correlationSpinner = document.getElementById("correlation-spinner");
+      const correlationButtonText = document.getElementById("correlation-button-text");
+      const correlationResultsEl = document.getElementById("correlation-results");
+
+      let elapsedData = []; // Store parsed elapsed log data globally
+      let uiLogData = []; // Store parsed UI log data globally for chart interaction
+
+      // Spike Analysis state
+      let lastClickedTimestamp = null;
+      let lastClickedElapsed = 0;
+      let oneSecondBefore = null;
+
+      // Web Workers
+      let correlationWorker = null;
+      let spikeAnalysisWorker = null;
+
+      // Regex patterns based on your examples
+      const elapsedLogRegex = /\[(\d{2})\/(\d{2})\/(\d{2})\]\[(\d{2}):(\d{2}):(\d{2})\]\s+([\d\.]+)/;
+      const uiLogRegex = /\[(\d{2})\/(\d{2})\/(\d{2})\]\[(\d{2}):(\d{2}):(\d{2})\]\s+\[(.*?)\]:\s*(.*)/;
+      const functionDetailRegex = /\((.*?)\):\s*(.*)/;
+      const eventDetailRegex = /"(.*)"/;
+
+      // --- Setup Drag and Drop ---
+
+      function setupDropZone(zoneEl, placeholderEl, inputEl, fileHandler) {
+        zoneEl.addEventListener("click", (e) => {
+          if (e.target === placeholderEl || placeholderEl.contains(e.target)) {
+            inputEl.click();
+          }
+        });
+        inputEl.addEventListener("change", (e) => {
+          const file = e.target.files[0];
+          if (file) {
+            fileHandler(file);
+          }
+        });
+        ["dragenter", "dragover"].forEach((eventName) => {
+          zoneEl.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            placeholderEl.classList.add("drag-over");
+          });
+        });
+        ["dragleave", "dragend"].forEach((eventName) => {
+          zoneEl.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            placeholderEl.classList.remove("drag-over");
+          });
+        });
+        zoneEl.addEventListener("drop", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          placeholderEl.classList.remove("drag-over");
+          const file = e.dataTransfer.files[0];
+          if (file) {
+            fileHandler(file);
+          }
+        });
+      }
+
+      setupDropZone(chartEl, chartDropZone, elapsedLogInput, handleElapsedFile);
+      setupDropZone(analysisEl, analysisDropZone, uiLogInput, handleUiFile);
+
+      // --- File Handlers ---
+
+      async function handleElapsedFile(file) {
+        chartDropZone.style.display = "none";
+        statsCard.classList.add("hidden"); // Hide stats on new file
+        updateStatus("Reading elapsed log...", "loading");
+        try {
+          const elapsedText = await readFileAsText(file);
+          updateStatus("Parsing elapsed log...", "loading");
+          elapsedData = parseElapsedLog(elapsedText);
+          if (elapsedData.length === 0) {
+            throw new Error("Could not parse any data from elapsed log. Check file format.");
+          }
+          updateStatus("Plotting data...", "loading");
+          plotData(elapsedData);
+          calculateAndDisplayStats(elapsedData); //  Calculate and show stats
+          updateStatus(`Loaded ${elapsedData.length} elapsed samples.`, "success");
+          setupWorkers();
+        } catch (error) {
+          console.error("Error processing elapsed log:", error);
+          updateStatus(`Error: ${error.message}`, "error");
+          Plotly.purge(chartEl);
+          chartDropZone.style.display = "flex";
+          statsCard.classList.add("hidden"); // Hide stats on error
+          elapsedData = [];
+        }
+      }
+
+      async function handleUiFile(file) {
+        analysisDropZone.style.display = "none";
+        analysisEl.innerHTML = getSpinnerHtml();
+        updateStatus("Reading UI log...", "loading");
+        try {
+          const uiText = await readFileAsText(file);
+          updateStatus("Parsing UI log...", "loading");
+          uiLogData = parseUiLog(uiText);
+          if (uiLogData.length === 0) {
+            console.warn("Could not parse any data from UI log. Analysis may be empty.");
+          }
+          updateStatus(`Loaded ${uiLogData.length} UI log entries.`, "success");
+          analysisEl.innerHTML =
+            '<div class="flex items-center justify-center h-full text-gray-500">Click a data point on the chart to analyze.</div>';
+          setupWorkers();
+        } catch (error) {
+          console.error("Error processing UI log:", error);
+          updateStatus(`Error: ${error.message}`, "error");
+          analysisDropZone.style.display = "flex";
+          analysisEl.innerHTML = "";
+          analysisEl.appendChild(analysisDropZone);
+          uiLogData = [];
+        }
+      }
+
+      // --- Main Process Listeners ---
+      filterTextarea.addEventListener("input", runSpikeAnalysis);
+      correlationButton.addEventListener("click", findSpikeCorrelations);
+      document.getElementById("differential-button").addEventListener("click", runDifferentialAnalysis);
+
+      // --- File & Parsing Functions ---
+      function readFileAsText(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(reader.error);
+          reader.readAsText(file);
+        });
+      }
+
+      function parseElapsedLog(text) {
+        const data = [];
+        const lines = text.split("\n");
+        for (const line of lines) {
+          const match = line.match(elapsedLogRegex);
+          if (match) {
+            const [_, yy, mm, dd, HH, MM, SS, elapsed] = match;
+            const isoTimestamp = `20${yy}-${mm}-${dd}T${HH}:${MM}:${SS}`;
+            data.push({
+              timestamp: new Date(isoTimestamp),
+              elapsed: parseFloat(elapsed),
+            });
+          }
+        }
+        return data;
+      }
+
+      function parseUiLog(text) {
+        const data = [];
+        const lines = text.split("\n");
+        for (const line of lines) {
+          const match = line.match(uiLogRegex);
+          if (match) {
+            const [_, yy, mm, dd, HH, MM, SS, type, rawMessage] = match;
+            const isoTimestamp = `20${yy}-${mm}-${dd}T${HH}:${MM}:${SS}`;
+            let entry = {
+              timestamp: new Date(isoTimestamp),
+              type: type.trim(),
+              addon: "N/A",
+              message: rawMessage.trim(), // Will be refined below
+              raw: line,
+              canonicalMessage: rawMessage.trim(), // Default, will be overridden
+            };
+
+            if (entry.type === "Function") {
+              const detailMatch = rawMessage.match(functionDetailRegex); // e.g., (Addon): FunctionName(params)
+              if (detailMatch) {
+                entry.addon = detailMatch[1].trim();
+                entry.message = detailMatch[2].trim(); // e.g., FunctionName(params)
+                // New canonical message: FunctionName
+                entry.canonicalMessage = entry.message.split("(")[0].trim();
+              } else {
+                // Fallback for functions without (Addon): prefix
+                entry.canonicalMessage = entry.message.split("(")[0].trim();
+              }
+            } else if (entry.type === "Event") {
+              const detailMatch = rawMessage.match(eventDetailRegex); // e.g., "EventName: params"
+              if (detailMatch) {
+                entry.message = detailMatch[1].trim(); // e.g., EventName: params
+                // New canonical message: EventName
+                entry.canonicalMessage = entry.message.split(":")[0].trim();
+              } else {
+                // Fallback for events not in quotes (if any)
+                entry.canonicalMessage = entry.message.split(":")[0].trim();
+              }
+            } else {
+              // For other types like 'Error', just use the message
+              entry.canonicalMessage = entry.message;
+            }
+            data.push(entry);
+          }
+        }
+        return data;
+      }
+
+      // --- Plotting & Analysis ---
+
+      function plotData(plotElapsedData) {
+        chartDropZone.style.display = "none";
+        Plotly.purge(chartEl);
+        const trace = {
+          x: plotElapsedData.map((d) => d.timestamp),
+          y: plotElapsedData.map((d) => d.elapsed),
+          mode: "lines+markers",
+          type: "scatter",
+          name: "Elapsed Time",
+          marker: { color: "#3b82f6", size: 4 },
+          line: { color: "#3b82f6", width: 1 },
+          hovertemplate: "%{y:.6f}s at %{x|%H:%M:%S}<extra></extra>",
+        };
+        const layout = {
+          title: "Elapsed Time (OnUpdate)",
+          xaxis: { title: "Time", gridcolor: "#374151", linecolor: "#4b5563", zerolinecolor: "#4b5563" },
+          yaxis: {
+            title: "Elapsed (seconds)",
+            gridcolor: "#374151",
+            linecolor: "#4b5563",
+            zerolinecolor: "#4b5563",
+          },
+          hovermode: "x unified",
+          template: "plotly_dark",
+          paper_bgcolor: "#1f2937",
+          plot_bgcolor: "#1f2937",
+          font: { color: "#d1d5db" },
+          margin: { l: 60, r: 20, t: 40, b: 60 },
+        };
+        Plotly.newPlot(chartEl, [trace], layout, { responsive: true });
+
+        chartEl.on("plotly_click", (data) => {
+          if (data.points.length > 0) {
+            const point = data.points[0];
+            lastClickedTimestamp = new Date(point.x);
+            lastClickedElapsed = point.y;
+            oneSecondBefore = new Date(lastClickedTimestamp.getTime() - 512);
+            runSpikeAnalysis();
+          }
+        });
+      }
+
+      /**
+       *  Calculates and displays statistics for the elapsed data.
+       * @param {Array<Object>} plotElapsedData - The parsed elapsed data.
+       */
+      function calculateAndDisplayStats(plotElapsedData) {
+        if (plotElapsedData.length === 0) {
+          statsCard.classList.add("hidden");
+          return;
+        }
+
+        const elapsedValues = plotElapsedData.map((d) => d.elapsed).sort((a, b) => a - b);
+        const count = elapsedValues.length;
+        const sum = elapsedValues.reduce((acc, val) => acc + val, 0);
+        const avg = sum / count;
+        const min = elapsedValues[0];
+        const max = elapsedValues[count - 1];
+
+        const p95Index = Math.floor(count * 0.95);
+        const p99Index = Math.floor(count * 0.99);
+
+        // ---  Title Calculation ---
+        const startTime = plotElapsedData[0].timestamp;
+        const endTime = plotElapsedData[count - 1].timestamp;
+        const durationMs = endTime.getTime() - startTime.getTime();
+
+        const titleEl = document.getElementById("elapsed-card-title");
+        titleEl.innerHTML = `OnUpdate Elapsed Time
+          <span class="text-gray-400 font-normal text-lg">
+            (from ${formatTime(startTime)} to ${formatTime(endTime)} - ${formatDuration(durationMs)})
+          </span>`;
+        // --- End of Title Calculation ---
+
+        statSamples.textContent = count.toLocaleString();
+        statAvg.textContent = `${avg.toFixed(6)}s`;
+        statMin.textContent = `${min.toFixed(6)}s`;
+        statMax.textContent = `${max.toFixed(6)}s`;
+        statP95.textContent = `${elapsedValues[p95Index].toFixed(6)}s`;
+        statP99.textContent = `${elapsedValues[p99Index].toFixed(6)}s`;
+
+        statsCard.classList.remove("hidden");
+      }
+
+      function runSpikeAnalysis() {
+        if (!lastClickedTimestamp) return;
+        if (uiLogData.length === 0) {
+          analysisEl.innerHTML =
+            '<div class="flex items-center justify-center h-full text-gray-500">Please drag and drop your UI log file here.</div>';
+          analysisEl.appendChild(analysisDropZone);
+          analysisDropZone.style.display = "flex";
+          return;
+        }
+        if (!spikeAnalysisWorker) {
+          console.error("Spike analysis worker not initialized.");
+          analysisEl.innerHTML = '<p class="text-red-400">Error: Analysis worker not ready.</p>';
+          return;
+        }
+        analysisEl.innerHTML = getSpinnerHtml();
+        const filterStrings = getFilterStrings();
+        spikeAnalysisWorker.postMessage({
+          uiLogData: uiLogData,
+          filterStrings: filterStrings,
+          clickedTimestamp: lastClickedTimestamp,
+          oneSecondBefore: oneSecondBefore,
+        });
+      }
+
+      function displayAnalysis(events) {
+        if (!lastClickedTimestamp) return;
+        analysisEl.innerHTML = "";
+        const title = document.createElement("h3");
+        title.className = "text-lg font-semibold text-white mb-3";
+        title.innerHTML = `Analysis for spike at ${formatTime(
+          lastClickedTimestamp
+        )} (<span class="text-blue-400">${lastClickedElapsed.toFixed(6)}s</span>)`;
+        analysisEl.appendChild(title);
+
+        if (events.length === 0) {
+          const filterInput = filterTextarea.value;
+          if (filterInput.trim() !== "") {
+            analysisEl.innerHTML += '<p class="text-gray-500">No UI log events found matching the current filter.</p>';
+          } else {
+            analysisEl.innerHTML +=
+              '<p class="text-gray-500">No UI log events found in the 1 second preceding this spike.</p>';
+          }
+          return;
+        }
+        events.forEach((event) => {
+          const lineEl = document.createElement("div");
+          const isFunction = event.type === "Function";
+
+          lineEl.className = `log-line`;
+
+          // Add base classes
+          if (event.type === "Function") {
+            lineEl.classList.add("log-function");
+          } else if (event.type === "Event") {
+            lineEl.classList.add("log-event");
+          } else if (event.type === "Error") {
+            lineEl.classList.add("log-error");
+          } else {
+            lineEl.classList.add("log-unknown");
+          }
+
+          // ---  Make log line clickable ---
+          lineEl.classList.add("log-line-clickable");
+          lineEl.dataset.canonical = event.canonicalMessage;
+          lineEl.title = `Click to find all occurrences of ${event.canonicalMessage}`;
+          lineEl.addEventListener("click", handleLogLineClick);
+          // --- End of clickable logic ---
+
+          lineEl.textContent = event.raw;
+          analysisEl.appendChild(lineEl);
+        });
+      }
+
+      // ---  Click handler for log lines ---
+      /**
+       * Finds all occurrences of a log message and plots them on the main chart.
+       * @param {Event} e - The click event from the log line.
+       */
+      function handleLogLineClick(e) {
+        const canonicalMessage = e.currentTarget.dataset.canonical;
+        if (!canonicalMessage) return;
+        if (uiLogData.length === 0) {
+          updateStatus("UI log data not loaded.", "error");
+          return;
+        }
+        if (elapsedData.length === 0) {
+          updateStatus("Elapsed log data not loaded.", "error");
+          return;
+        }
+
+        updateStatus(`Finding all occurrences of ${canonicalMessage}...`, "loading");
+
+        // Find all timestamps for this event/function
+        const timestamps = uiLogData
+          .filter((event) => event.canonicalMessage === canonicalMessage)
+          .map((event) => event.timestamp);
+
+        if (timestamps.length === 0) {
+          updateStatus(`Could not find any occurrences of ${canonicalMessage}.`, "info");
+          return;
+        }
+
+        plotVerticalLines(timestamps, canonicalMessage);
+        updateStatus(`Plotted ${timestamps.length} occurrences of ${canonicalMessage}.`, "success");
+      }
+
+      /**
+       *  Draws vertical dotted lines on the Plotly chart.
+       * @param {Array<Date>} timestamps - An array of Date objects to plot.
+       * @param {string} name - The canonical name of the event/function.
+       */
+      function plotVerticalLines(timestamps, name) {
+        if (!chartEl.data) {
+          console.error("Chart is not initialized.");
+          return;
+        }
+
+        // Get the current layout's shapes (if any), but filter out old vertical lines
+        const currentLayout = chartEl.layout;
+        const existingShapes = (currentLayout.shapes || []).filter((shape) => shape.name !== "vertical-line");
+
+        const newShapes = timestamps.map((ts) => ({
+          type: "line",
+          name: "vertical-line", // Add a name to identify them for later removal
+          x0: ts,
+          y0: 0,
+          x1: ts,
+          y1: 1,
+          yref: "paper",
+          line: {
+            color: "rgba(242, 169, 53, 0.7)", // Use the 'event' color
+            width: 1,
+            dash: "dot",
+          },
+        }));
+
+        const allShapes = existingShapes.concat(newShapes);
+
+        Plotly.relayout(chartEl, { shapes: allShapes });
+      }
+
+      // --- Web Worker Setup ---
+      function setupWorkers() {
+        if (elapsedData.length > 0 && uiLogData.length > 0 && !correlationWorker) {
+          updateStatus("Correlation worker ready.", "success");
+          const correlationBlob = new Blob([correlationWorkerScriptString], { type: "application/javascript" });
+          correlationWorker = new Worker(URL.createObjectURL(correlationBlob));
+          correlationWorker.onmessage = (e) => {
+            const data = e.data;
+            if (data.type === "progress") {
+              //  Handle progress updates
+              correlationResultsEl.innerHTML = `<p class="text-gray-500">${data.message}</p>`;
+            } else if (data.type === "result") {
+              correlationSpinner.classList.add("hidden");
+              correlationButtonText.classList.remove("hidden");
+              correlationButton.disabled = false;
+              const { results, totalSpikes } = data;
+              correlationResultsEl.innerHTML = ""; // Clear "Analyzing..."
+
+              const lower = correlationThresholdLowerInput.value;
+              const upperVal = correlationThresholdUpperInput.value;
+              const upper = !upperVal || isNaN(parseFloat(upperVal)) ? "max" : `${upperVal}s`;
+
+              const title = document.createElement("h3");
+              title.className = "text-lg font-semibold text-white mb-3";
+              title.innerHTML = `Found ${totalSpikes} spikes between ${lower}s and ${upper}. Showing logs present in at least 2 of them:`;
+              correlationResultsEl.appendChild(title);
+
+              if (results.length === 0) {
+                correlationResultsEl.innerHTML += `<p class="text-gray-500">No single log line found in at least 2 spikes (after filtering).</p>`;
+                return;
+              }
+              results.forEach((result) => {
+                const lineEl = document.createElement("div");
+                const isFunction = result.type === "Function";
+                lineEl.className = `log-line ${isFunction ? "log-function" : "log-event"}`;
+                const percentage = ((result.count / totalSpikes) * 100).toFixed(0);
+                lineEl.textContent = `(${result.count}/${totalSpikes} spikes - ${percentage}%) ${result.message}`;
+                correlationResultsEl.appendChild(lineEl);
+              });
+            }
+          };
+          correlationWorker.onerror = (error) => {
+            console.error("Correlation Worker error:", error);
+            correlationResultsEl.innerHTML = `<p class="text-red-400">An error occurred during correlation: ${error.message}</p>`;
+            correlationSpinner.classList.add("hidden");
+            correlationButtonText.classList.remove("hidden");
+            correlationButton.disabled = false;
+          };
+        }
+        if (!spikeAnalysisWorker) {
+          const spikeBlob = new Blob([spikeAnalysisWorkerScriptString], { type: "application/javascript" });
+          spikeAnalysisWorker = new Worker(URL.createObjectURL(spikeBlob));
+          spikeAnalysisWorker.onmessage = (e) => {
+            const data = e.data;
+            if (data.type === "result") {
+              displayAnalysis(data.relevantEvents);
+            }
+          };
+          spikeAnalysisWorker.onerror = (error) => {
+            console.error("Spike Analysis Worker error:", error);
+            analysisEl.innerHTML = `<p class="text-red-400">An error occurred during analysis: ${error.message}</p>`;
+          };
+        }
+      }
+
+      function findSpikeCorrelations() {
+        const lowerThreshold = parseFloat(correlationThresholdLowerInput.value);
+        let upperThreshold = parseFloat(correlationThresholdUpperInput.value);
+
+        if (isNaN(lowerThreshold) || lowerThreshold < 0) {
+          correlationResultsEl.innerHTML =
+            '<p class="text-red-400">Invalid lower threshold. Please enter a positive number.</p>';
+          return;
+        }
+        // If upper threshold is empty or invalid, set it to Infinity
+        if (isNaN(upperThreshold) || upperThreshold <= 0 || upperThreshold < lowerThreshold) {
+          upperThreshold = Infinity;
+        }
+
+        if (elapsedData.length === 0) {
+          correlationResultsEl.innerHTML =
+            '<p class="text-gray-500">Please drop the Elapsed Time Log onto the chart area first.</p>';
+          return;
+        }
+        if (uiLogData.length === 0) {
+          correlationResultsEl.innerHTML =
+            '<p class="text-gray-500">Please drop the UI Log onto the analysis area first.</p>';
+          return;
+        }
+        if (!correlationWorker) {
+          correlationResultsEl.innerHTML =
+            '<p class="text-red-400">Error: Correlation worker not initialized. Please re-load logs.</p>';
+          return;
+        }
+
+        correlationSpinner.classList.remove("hidden");
+        correlationButtonText.classList.add("hidden");
+        correlationButton.disabled = true;
+        correlationResultsEl.innerHTML = '<p class="text-gray-500">Starting analysis...</p>';
+        const filterStrings = getFilterStrings();
+
+        const msg = {
+          uiLogData,
+          elapsedData,
+          lowerThreshold,
+          upperThreshold,
+          filterStrings,
+        };
+        setTimeout(() => correlationWorker.postMessage(msg), 0);
+      }
+
+      // --- Utility Functions ---
+
+      function getFilterStrings() {
+        const filterInput = filterTextarea.value;
+        return filterInput.split("\n").filter((s) => s.trim() !== "");
+      }
+
+      function getSpinnerHtml() {
+        return `
+                <div class="spinner-placeholder">
+                    <svg class="spinner w-10 h-10 text-gray-400 border-t-2 border-r-2 rounded-full" viewBox="0 0 24 24"></svg>
+                </div>
+            `;
+      }
+
+      function updateStatus(message, type = "info") {
+        statusEl.textContent = message;
+        statusEl.classList.remove("text-green-400", "text-red-400", "text-gray-400");
+        switch (type) {
+          case "success":
+            statusEl.classList.add("text-green-400");
+            break;
+          case "error":
+            statusEl.classList.add("text-red-400");
+            break;
+          case "loading":
+          case "info":
+          default:
+            statusEl.classList.add("text-white-400");
+            break;
+        }
+      }
+
+      function formatTime(date) {
+        if (!date) return "Invalid Date";
+        const pad = (num, len = 2) => String(num).padStart(len, "0");
+        return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${pad(
+          date.getMilliseconds(),
+          3
+        )}`;
+      }
+
+      /**
+       * Formats a duration in milliseconds to (Xm Ys) or (Ys).
+       * @param {number} ms - The duration in milliseconds.
+       * @returns {string} The formatted duration string.
+       */
+      function formatDuration(ms) {
+        const totalSeconds = Math.floor(ms / 1000);
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+
+        if (minutes > 0) {
+          return `${minutes}m ${seconds}s`;
+        } else {
+          return `${seconds}s`;
+        }
+      }
+
+      /**
+       * Parses a "HH:MM:SS" string into a Date object, using the date from the first log entry.
+       * @param {string} timeString - The time string (e.g., "14:30:05").
+       * @param {Date} baseDate - The date to use (e.g., from uiLogData[0].timestamp).
+       * @returns {Date|null} A Date object or null if invalid.
+       */
+      function parseTimeInput(timeString, baseDate) {
+        if (!timeString || !baseDate) return null;
+        const parts = timeString.match(/^(\d{2}):(\d{2}):(\d{2})$/);
+        if (!parts) return null;
+
+        const [_, HH, MM, SS] = parts.map(Number);
+        const newDate = new Date(baseDate);
+        newDate.setHours(HH, MM, SS, 0); // Note: sets milliseconds to 0
+        return newDate;
+      }
+
+      /**
+       * Runs the differential analysis to find logs in (A-B) but not in (C-D).
+       */
+      function runDifferentialAnalysis() {
+        const resultsEl = document.getElementById("differential-results");
+        if (uiLogData.length === 0) {
+          resultsEl.innerHTML = '<p class="text-gray-500">Please load a UI Log file first.</p>';
+          return;
+        }
+
+        const baseDate = uiLogData[0].timestamp; // Use the first log's date as the base
+
+        // Get and parse all four timestamps
+        const timeA = parseTimeInput(document.getElementById("diff-a").value, baseDate);
+        const timeB = parseTimeInput(document.getElementById("diff-b").value, baseDate);
+        const timeC = parseTimeInput(document.getElementById("diff-c").value, baseDate);
+        const timeD = parseTimeInput(document.getElementById("diff-d").value, baseDate);
+
+        if (!timeA || !timeB || !timeC || !timeD) {
+          resultsEl.innerHTML =
+            '<p class="text-red-400">Invalid time format. Please use HH:MM:SS (e.g., 14:30:05).</p>';
+          return;
+        }
+
+        // 1. Get all logs in the "Suspicious" range (A-B)
+        const logsInAB = uiLogData.filter((log) => log.timestamp >= timeA && log.timestamp <= timeB);
+
+        // 2. Get all logs in the "Reference" range (C-D)
+        const logsInCD = uiLogData.filter((log) => log.timestamp >= timeC && log.timestamp <= timeD);
+
+        // 3. Create Sets of unique canonical messages (now using the new simplified messages)
+        const setAB = new Set(logsInAB.map((log) => log.canonicalMessage));
+        const setCD = new Set(logsInCD.map((log) => log.canonicalMessage));
+
+        // 4. Find messages in setAB that are not in setCD
+        const uniqueToAB = [];
+        setAB.forEach((message) => {
+          if (!setCD.has(message)) {
+            // Find the original log entry to get its type (Function/Event)
+            const originalLog = logsInAB.find((log) => log.canonicalMessage === message);
+            uniqueToAB.push({
+              message: message, // This IS the canonical message
+              type: originalLog ? originalLog.type : "Unknown",
+            });
+          }
+        });
+
+        // 5. Display the results
+        resultsEl.innerHTML = ""; // Clear previous results
+
+        const title = document.createElement("h3");
+        title.className = "text-lg font-semibold text-white mb-3";
+        title.textContent = `Found ${uniqueToAB.length} log entries unique to the suspicious range:`;
+        resultsEl.appendChild(title);
+
+        if (uniqueToAB.length === 0) {
+          resultsEl.innerHTML +=
+            '<p class="text-gray-500">No unique logs found. All logs in the suspicious range also appeared in the reference range.</p>';
+          return;
+        }
+
+        // Sort (e.g., by type then message)
+        uniqueToAB.sort((a, b) => {
+          if (a.type !== b.type) return a.type.localeCompare(b.type);
+          return a.message.localeCompare(b.message);
+        });
+
+        uniqueToAB.forEach((result) => {
+          const lineEl = document.createElement("div");
+          const isFunction = result.type === "Function";
+          // Use the canonical message as the text content
+          lineEl.textContent = result.message;
+
+          // ---  Apply styling and click handler (NEW) ---
+          lineEl.className = `log-line ${isFunction ? "log-function" : "log-event"}`;
+          lineEl.classList.add("log-line-clickable");
+          lineEl.dataset.canonical = result.message; // The message is the canonical message
+          lineEl.title = `Click to find all occurrences of ${result.message}`;
+          lineEl.addEventListener("click", handleLogLineClick);
+          // --- End of clickable logic ---
+
+          resultsEl.appendChild(lineEl);
+        });
+      }
+
+      /**
+       * Finds all card headers and makes them collapsible.
+       * This version toggles all siblings after the header.
+       */
+      function setupCollapsibleCards() {
+        document.querySelectorAll(".card-toggle-header").forEach((header) => {
+          header.addEventListener("click", () => {
+            // Loop through all elements immediately after the header
+            let sibling = header.nextElementSibling;
+            while (sibling) {
+              // Toggle the 'hidden' class on every sibling
+              sibling.classList.toggle("hidden");
+              sibling = sibling.nextElementSibling;
+            }
+            // Toggle the 'collapsed' class on the header itself for the icon
+            header.classList.toggle("collapsed");
+          });
+        });
+      }
+
+      // --- Initial Setup ---
+      setupWorkers(); // Initialize spike worker on load
+      setupCollapsibleCards();
+    </script>
+  </body>
+</html>
