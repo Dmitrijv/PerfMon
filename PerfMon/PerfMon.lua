@@ -1,11 +1,14 @@
 PerfMon = PerfMon or {};
 local PerfMon = PerfMon;
 
--- locals for performance
 local pairs = pairs
 local ipairs = ipairs
 local tostring = tostring
 local towstring = towstring
+local string_format = string.format
+
+-- Captured at file load so PerfMon's own writes always bypass our hooked wrappers,
+-- preventing the elapsed/breakpoint payloads from being double-prefixed.
 local TextLogAddEntry = TextLogAddEntry
 local TextLogSaveLog = TextLogSaveLog
 
@@ -15,8 +18,42 @@ local recording = false
 local logFile = ""
 local elapsedThrottle = 1
 
+-- Shared monotonic clock. Advanced once per frame in OnUpdate, read by both the
+-- elapsed-sample writer and the wrapped log functions. Starts at zero on each
+-- recording session so HTML-side projection has a clean origin.
+local cumulativeTime = 0
+local cachedPrefix = towstring("[t=0.0000] ")
+local cachedPrefixStr = "[t=0.0000] "
+local emptyW = towstring("")
+local emptyS = ""
+
+-- Originals are stashed when Start() hooks the globals, restored by Stop().
+local _origLogLuaMessage = nil
+local _origTextLogAddEntry = nil
+local _origTextLogAddSingleByteEntry = nil
+
 local function Print(str)
     EA_ChatWindow.Print(towstring(str));
+end
+
+function PerfMon.GetCumulativeTime()
+    return cumulativeTime
+end
+
+-- Wrappers reuse the per-frame cached prefix so high-frequency event bursts
+-- inside a single frame allocate one wstring/string for the prefix instead of
+-- one per logged entry. The originals are called via local upvalues to avoid
+-- the global table dispatch on every call.
+local function hookedLogLuaMessage(channel, filterId, text)
+    return _origLogLuaMessage(channel, filterId, cachedPrefix .. towstring(text or emptyW))
+end
+
+local function hookedTextLogAddEntry(channel, filterId, text)
+    return _origTextLogAddEntry(channel, filterId, cachedPrefix .. towstring(text or emptyW))
+end
+
+local function hookedTextLogAddSingleByteEntry(channel, filterId, text)
+    return _origTextLogAddSingleByteEntry(channel, filterId, cachedPrefixStr .. tostring(text or emptyS))
 end
 
 function PerfMon.OnInitialize()
@@ -28,132 +65,6 @@ function PerfMon.OnInitialize()
 		Print(L"<icon=57> PerfMon initialized. Use '/perfmon on' to start monitoring or '/perfmon off' to stop monitoring.");
 	end
 end
-
-
--- (7/7 spikes - 100%) (EA_ChatWindow): EA_ChatWindow.OnTextLogUpdated
--- (7/7 spikes - 100%) (ror_PacketHandling): ror_PacketHandling.OnChatLogUpdated
--- (7/7 spikes - 100%) (Statdoll Remix): Statdoll.Getstats.onUpdate
--- (7/7 spikes - 100%) (RoR_ScenarioExtendedStats): RoR_ScenarioExtendedStats.OnChatLogUpdated
--- (7/7 spikes - 100%) (RoR_MatchMakingRaiting): RoR_MatchMakingRaiting.OnChatLogUpdated
--- (7/7 spikes - 100%) (RoR_MultiSpec): MultiSpec.OnChatLogUpdated
--- (7/7 spikes - 100%) (RoR_RankedLeaderboard): RoR_RankedLeaderboard.OnChatLogUpdated
--- (7/7 spikes - 100%) (RoR_ScenarioSurrenderWindow): RoR_Window_ScenarioSurrender.TextUpdate
--- (7/7 spikes - 100%) ChatManager.OnChatText()
--- (7/7 spikes - 100%) (Queue Queuer): QueueQueuer.OnChat
--- (7/7 spikes - 100%) (Enemy): Enemy.OnChatTextArrived
--- (7/7 spikes - 100%) (EA_ChatWindow): EventDebug_CHAT_TEXT_ARRIVED
--- (7/7 spikes - 100%) "CHAT_TEXT_ARRIVED"
--- (7/7 spikes - 100%) (Enemy): Enemy.KillSpamUI_KillSpamDialog_OnListPopulate
--- (7/7 spikes - 100%) (EA_PlayerStatusWindow): PlayerWindow.UpdateCrown
--- (7/7 spikes - 100%) (BuffHead): BuffHead.OnGroupEffectsUpdated
-
-
--- (11/12 spikes - 92%) (EA_ChatWindow): EA_ChatWindow.OnTextLogUpdated
--- (11/12 spikes - 92%) (ror_PacketHandling): ror_PacketHandling.OnChatLogUpdated
--- (11/12 spikes - 92%) (Statdoll Remix): Statdoll.Getstats.onUpdate
--- (11/12 spikes - 92%) (RoR_ScenarioExtendedStats): RoR_ScenarioExtendedStats.OnChatLogUpdated
--- (11/12 spikes - 92%) (RoR_MatchMakingRaiting): RoR_MatchMakingRaiting.OnChatLogUpdated
--- (11/12 spikes - 92%) (RoR_MultiSpec): MultiSpec.OnChatLogUpdated
--- (11/12 spikes - 92%) (RoR_RankedLeaderboard): RoR_RankedLeaderboard.OnChatLogUpdated
--- (11/12 spikes - 92%) (RoR_ScenarioSurrenderWindow): RoR_Window_ScenarioSurrender.TextUpdate
--- (11/12 spikes - 92%) ChatManager.OnChatText()
--- (11/12 spikes - 92%) (Queue Queuer): QueueQueuer.OnChat
--- (11/12 spikes - 92%) (Enemy): Enemy.OnChatTextArrived
--- (11/12 spikes - 92%) (EA_ChatWindow): EventDebug_CHAT_TEXT_ARRIVED
--- (11/12 spikes - 92%) "CHAT_TEXT_ARRIVED"
--- (11/12 spikes - 92%) (BuffHead): BuffHead.OnGroupEffectsUpdated
-
--- (3/3 spikes - 100%) (EA_ChatWindow): EA_ChatWindow.OnTextLogUpdated( 0.0000, 17.0000 )
--- (3/3 spikes - 100%) (ror_PacketHandling): ror_PacketHandling.OnChatLogUpdated( 0.0000, 17.0000 )
--- (3/3 spikes - 100%) (Statdoll Remix): Statdoll.Getstats.onUpdate( 0.0000, 17.0000 )
--- (3/3 spikes - 100%) (RoR_ScenarioExtendedStats): RoR_ScenarioExtendedStats.OnChatLogUpdated( 0.0000, 17.0000 )
--- (3/3 spikes - 100%) (RoR_MatchMakingRaiting): RoR_MatchMakingRaiting.OnChatLogUpdated( 0.0000, 17.0000 )
--- (3/3 spikes - 100%) (RoR_MultiSpec): MultiSpec.OnChatLogUpdated( 0.0000, 17.0000 )
--- (3/3 spikes - 100%) (RoR_RankedLeaderboard): RoR_RankedLeaderboard.OnChatLogUpdated( 0.0000, 17.0000 )
--- (3/3 spikes - 100%) (RoR_ScenarioSurrenderWindow): RoR_Window_ScenarioSurrender.TextUpdate( 0.0000, 17.0000 )
--- (3/3 spikes - 100%) ChatManager.OnChatText()
--- (3/3 spikes - 100%) (Queue Queuer): QueueQueuer.OnChat()
--- (3/3 spikes - 100%) (Enemy): Enemy.OnChatTextArrived()
--- (3/3 spikes - 100%) (EA_ChatWindow): EventDebug_CHAT_TEXT_ARRIVED()
--- (3/3 spikes - 100%) "CHAT_TEXT_ARRIVED:"
--- (3/3 spikes - 100%) (Enemy): Enemy.KillSpamUI_KillSpamDialog_OnListPopulate( Table [index = -1] )
--- (3/3 spikes - 100%) (EA_PlayerStatusWindow): PlayerWindow.UpdateCrown()
--- (3/3 spikes - 100%) (WSCT): WSCT.PLAYER_EFFECTS_UPDATED( Table [index = -2], false )
--- (3/3 spikes - 100%) (BuffHead): BuffHead.OnGroupEffectsUpdated( Table [index = -2], false )
--- (3/3 spikes - 100%) (Pure): PurePlayer.OnPlayerEffectsUpdated( Table [index = -2], false )
--- (3/3 spikes - 100%) (Enemy): Enemy.Groups_OnCurrentPlayerEffectsUpdated( Table [index = -2], false )
--- (3/3 spikes - 100%) (RVMOD_Targets): RVAPI_Entities.OnPlayerEffectsUpdatedProxy( Table [index = -2], false )
--- (3/3 spikes - 100%) (EA_ChatWindow): EventDebug_PLAYER_EFFECTS_UPDATED( Table [index = -2], false )
--- (3/3 spikes - 100%) (EA_CharacterWindow): CharacterWindow.PlayerEffectsUpdated( Table [index = -2], false )
--- (3/3 spikes - 100%) (EA_ChatWindow): EA_ChatWindow.OnTextLogUpdated( 0.0000, 65.0000 )
--- (3/3 spikes - 100%) (ror_PacketHandling): ror_PacketHandling.OnChatLogUpdated( 0.0000, 65.0000 )
--- (3/3 spikes - 100%) (Statdoll Remix): Statdoll.Getstats.onUpdate( 0.0000, 65.0000 )
--- (3/3 spikes - 100%) (RoR_ScenarioExtendedStats): RoR_ScenarioExtendedStats.OnChatLogUpdated( 0.0000, 65.0000 )
--- (3/3 spikes - 100%) (RoR_MatchMakingRaiting): RoR_MatchMakingRaiting.OnChatLogUpdated( 0.0000, 65.0000 )
--- (3/3 spikes - 100%) (RoR_MultiSpec): MultiSpec.OnChatLogUpdated( 0.0000, 65.0000 )
--- (3/3 spikes - 100%) (RoR_RankedLeaderboard): RoR_RankedLeaderboard.OnChatLogUpdated( 0.0000, 65.0000 )
-
-
--- 0,55 sec
--- (2/2 spikes - 100%) (Effigy): Effigy.StateUpdateHandlers.Handler13( 0.0000 )
--- (2/2 spikes - 100%) (EA_ChatWindow): EventDebug_PLAYER_AREA_CHANGED( 0.0000 )
--- (2/2 spikes - 100%) "PLAYER_AREA_CHANGED: 0"
--- (2/2 spikes - 100%) (EA_ObjectiveTrackers): EA_Window_PublicQuestTracker.OnAreaChange( 0.0000 )
--- (2/2 spikes - 100%) "PLAYER_AREA_NAME_CHANGED:"
--- (2/2 spikes - 100%) (EA_ChatWindow): EA_ChatWindow.OnTextLogUpdated( 1.0000, 31.0000 )
--- (2/2 spikes - 100%) (ror_PacketHandling): ror_PacketHandling.OnChatLogUpdated( 1.0000, 31.0000 )
--- (2/2 spikes - 100%) (Statdoll Remix): Statdoll.Getstats.onUpdate( 1.0000, 31.0000 )
--- (2/2 spikes - 100%) (RoR_ScenarioExtendedStats): RoR_ScenarioExtendedStats.OnChatLogUpdated( 1.0000, 31.0000 )
--- (2/2 spikes - 100%) (RoR_MatchMakingRaiting): RoR_MatchMakingRaiting.OnChatLogUpdated( 1.0000, 31.0000 )
--- (2/2 spikes - 100%) (RoR_MultiSpec): MultiSpec.OnChatLogUpdated( 1.0000, 31.0000 )
--- (2/2 spikes - 100%) (RoR_RankedLeaderboard): RoR_RankedLeaderboard.OnChatLogUpdated( 1.0000, 31.0000 )
--- (2/2 spikes - 100%) (RoR_ScenarioSurrenderWindow): RoR_Window_ScenarioSurrender.TextUpdate( 1.0000, 31.0000 )
--- (2/2 spikes - 100%) (EA_ChatWindow): EA_ChatWindow.OnTextLogUpdated( 0.0000, 24.0000 )
--- (2/2 spikes - 100%) (ror_PacketHandling): ror_PacketHandling.OnChatLogUpdated( 0.0000, 24.0000 )
--- (2/2 spikes - 100%) (Statdoll Remix): Statdoll.Getstats.onUpdate( 0.0000, 24.0000 )
--- (2/2 spikes - 100%) (RoR_ScenarioExtendedStats): RoR_ScenarioExtendedStats.OnChatLogUpdated( 0.0000, 24.0000 )
--- (2/2 spikes - 100%) (RoR_MatchMakingRaiting): RoR_MatchMakingRaiting.OnChatLogUpdated( 0.0000, 24.0000 )
--- (2/2 spikes - 100%) (RoR_MultiSpec): MultiSpec.OnChatLogUpdated( 0.0000, 24.0000 )
--- (2/2 spikes - 100%) (RoR_RankedLeaderboard): RoR_RankedLeaderboard.OnChatLogUpdated( 0.0000, 24.0000 )
--- (2/2 spikes - 100%) (RoR_ScenarioSurrenderWindow): RoR_Window_ScenarioSurrender.TextUpdate( 0.0000, 24.0000 )
--- (2/2 spikes - 100%) (EA_OpenPartyWindow): EA_Window_OpenPartyNearby.OnPlayerChapterChanged()
--- (2/2 spikes - 100%) (CMap): CMapWindow.UpdateInfluenceBar()
--- (2/2 spikes - 100%) (EA_ChatWindow): EventDebug_PLAYER_CHAPTER_UPDATED()
--- (2/2 spikes - 100%) "PLAYER_CHAPTER_UPDATED:"
--- (2/2 spikes - 100%) (Enemy): Enemy.Groups_OnCurrentPlayerUpdated()
--- (2/2 spikes - 100%) (EA_PlayerStatusWindow): PlayerWindow.UpdateCrown()
--- (2/2 spikes - 100%) (Effigy): Effigy.StateUpdateHandlers.Handler5()
--- (2/2 spikes - 100%) (EA_ChatWindow): EventDebug_PLAYER_GROUP_LEADER_STATUS_UPDATED()
--- (2/2 spikes - 100%) "PLAYER_GROUP_LEADER_STATUS_UPDATED:"
--- (2/2 spikes - 100%) (EA_ChatWindow): EA_ChatWindow.OnTextLogUpdated( 0.0000, 65.0000 )
--- (2/2 spikes - 100%) (ror_PacketHandling): ror_PacketHandling.OnChatLogUpdated( 0.0000, 65.0000 )
--- (2/2 spikes - 100%) (Statdoll Remix): Statdoll.Getstats.onUpdate( 0.0000, 65.0000 )
--- (2/2 spikes - 100%) (RoR_ScenarioExtendedStats): RoR_ScenarioExtendedStats.OnChatLogUpdated( 0.0000, 65.0000 )
--- (2/2 spikes - 100%) (RoR_MatchMakingRaiting): RoR_MatchMakingRaiting.OnChatLogUpdated( 0.0000, 65.0000 )
--- (2/2 spikes - 100%) (RoR_MultiSpec): MultiSpec.OnChatLogUpdated( 0.0000, 65.0000 )
--- (2/2 spikes - 100%) (RoR_RankedLeaderboard): RoR_RankedLeaderboard.OnChatLogUpdated( 0.0000, 65.0000 )
--- (2/2 spikes - 100%) (RoR_ScenarioSurrenderWindow): RoR_Window_ScenarioSurrender.TextUpdate( 0.0000, 65.0000 )
--- (2/2 spikes - 100%) ChatManager.OnChatText()
--- (2/2 spikes - 100%) (Queue Queuer): QueueQueuer.OnChat()
--- (2/2 spikes - 100%) (Enemy): Enemy.OnChatTextArrived()
--- (2/2 spikes - 100%) (EA_ChatWindow): EventDebug_CHAT_TEXT_ARRIVED()
--- (2/2 spikes - 100%) "CHAT_TEXT_ARRIVED:"
-
-
--- (64/73 spikes - 88%) ChatManager.OnChatText()
--- (64/73 spikes - 88%) (Queue Queuer): QueueQueuer.OnChat()
--- (64/73 spikes - 88%) (Enemy): Enemy.OnChatTextArrived()
--- (64/73 spikes - 88%) (EA_ChatWindow): EventDebug_CHAT_TEXT_ARRIVED()
--- (64/73 spikes - 88%) "CHAT_TEXT_ARRIVED:"
--- (62/73 spikes - 85%) (EA_ChatWindow): EA_ChatWindow.OnTextLogUpdated( 0.0000, 65.0000 )
--- (62/73 spikes - 85%) (ror_PacketHandling): ror_PacketHandling.OnChatLogUpdated( 0.0000, 65.0000 )
--- (62/73 spikes - 85%) (Statdoll Remix): Statdoll.Getstats.onUpdate( 0.0000, 65.0000 )
--- (62/73 spikes - 85%) (RoR_ScenarioExtendedStats): RoR_ScenarioExtendedStats.OnChatLogUpdated( 0.0000, 65.0000 )
--- (62/73 spikes - 85%) (RoR_MatchMakingRaiting): RoR_MatchMakingRaiting.OnChatLogUpdated( 0.0000, 65.0000 )
--- (62/73 spikes - 85%) (RoR_MultiSpec): MultiSpec.OnChatLogUpdated( 0.0000, 65.0000 )
--- (62/73 spikes - 85%) (RoR_RankedLeaderboard): RoR_RankedLeaderboard.OnChatLogUpdated( 0.0000, 65.0000 )
--- (62/73 spikes - 85%) (RoR_ScenarioSurrenderWindow): RoR_Window_ScenarioSurrender.TextUpdate( 0.0000, 65.0000 )
-
 
 local function setLogFilterEnabled(filterId, enabled)
 	DebugWindow.Settings.LogFilters[filterId].enabled = enabled
@@ -188,7 +99,7 @@ function PerfMon.Start()
 	local minutes = math.floor((t % 3600) / 60)
 	local seconds = t % 60
 	
-	local at = string.format(
+	local at = string_format(
 		"%04d_%02d_%02d_%02d%02d%02d",
 		d.todaysYear,
 		d.todaysMonth,
@@ -201,6 +112,25 @@ function PerfMon.Start()
 	TextLogCreate(file, 999999)
 	TextLogSetEnabled(file, true)
 	TextLogSetIncrementalSaving(file, true, StringToWString("logs/"..file..".log"))
+
+    -- Reset the monotonic clock and prime the cached prefix so any event that
+    -- fires before the first OnUpdate tick still receives a sane stamp.
+    cumulativeTime = 0
+    cachedPrefixStr = "[t=0.0000] "
+    cachedPrefix = towstring(cachedPrefixStr)
+
+    -- Hook the three globals every UI-log payload flows through. The wrappers
+    -- prepend the monotonic stamp so HTML 2 can align events sub-second against
+    -- the elapsed trace. We must assign through _G explicitly: a bare
+    -- `TextLogAddEntry = ...` would rebind the file-level local upvalue, which
+    -- would then route PerfMon's own elapsed writes through the hook and
+    -- double-prefix them.
+    _origLogLuaMessage = _G.LogLuaMessage
+    _origTextLogAddEntry = _G.TextLogAddEntry
+    _origTextLogAddSingleByteEntry = _G.TextLogAddSingleByteEntry
+    _G.LogLuaMessage = hookedLogLuaMessage
+    _G.TextLogAddEntry = hookedTextLogAddEntry
+    _G.TextLogAddSingleByteEntry = hookedTextLogAddSingleByteEntry
 
 	elapsedThrottle = 0.5
     recording = true
@@ -215,6 +145,16 @@ function PerfMon.Stop()
 		Print("<icon=58> PerfMon is not recording.");
 		return
 	end
+
+    -- Restore globals first so any teardown logging below does not pick up a
+    -- stale prefix from the now-dead recording session. Mirror the Start hook
+    -- by writing through _G to avoid rebinding the file-level local upvalue.
+    if _origLogLuaMessage then _G.LogLuaMessage = _origLogLuaMessage end
+    if _origTextLogAddEntry then _G.TextLogAddEntry = _origTextLogAddEntry end
+    if _origTextLogAddSingleByteEntry then _G.TextLogAddSingleByteEntry = _origTextLogAddSingleByteEntry end
+    _origLogLuaMessage = nil
+    _origTextLogAddEntry = nil
+    _origTextLogAddSingleByteEntry = nil
 
     recording = false
     logFile = ""
@@ -245,6 +185,20 @@ function PerfMon.Stop()
 end
 
 
+function PerfMon.Breakpoint()
+	if not recording then
+		Print("<icon=58> PerfMon is not recording.");
+		return
+	end
+
+	-- Stamp the breakpoint with the same monotonic prefix so HTML 2 can place it
+	-- on the projected sub-second axis instead of a 1-second file timestamp.
+	local payload = towstring(string_format("[t=%.4f] BREAKPOINT", cumulativeTime))
+	TextLogAddEntry(logFile, 0, payload)
+	TextLogSaveLog(logFile, path)
+	Print("<icon=57> PerfMon breakpoint inserted.");
+end
+
 function PerfMon.SlashCmd(args)
 	local command;
 	local parameter;
@@ -264,6 +218,8 @@ function PerfMon.SlashCmd(args)
         PerfMon.Start();
     elseif command == "stop" or command == "off" then
         PerfMon.Stop();		
+    elseif command == "breakpoint" or command == "bp" then
+        PerfMon.Breakpoint();
     else
 		Print("Unknown PerfMon command.");
 	end
@@ -275,19 +231,26 @@ function PerfMon.OnUpdate(elapsed)
 		return
 	end
 
-	-- if elapsed is less or equal to 0.2 seconds, throttle logging
+    -- Advance the monotonic clock first so any event hooked downstream within
+    -- this frame stamps with the up-to-date value. The cached prefix is
+    -- recomputed exactly once per frame and reused by every wrapper call.
+    cumulativeTime = cumulativeTime + elapsed
+    cachedPrefixStr = string_format("[t=%.6f] ", cumulativeTime)
+    cachedPrefix = towstring(cachedPrefixStr)
+
 	if elapsed <= 0.2 then
         elapsedThrottle = elapsedThrottle - elapsed
 
         if elapsedThrottle <= 0 then
-			TextLogAddEntry(logFile, 0, towstring(elapsed))
+            local payload = cachedPrefix .. towstring(string_format("%.6f", elapsed))
+            TextLogAddEntry(logFile, 0, payload)
 			TextLogSaveLog(logFile, path)
 			elapsedThrottle = 1
 		end
 
-	-- log right away
 	else
-		TextLogAddEntry(logFile, 0, towstring(elapsed))
+        local payload = cachedPrefix .. towstring(string_format("%.6f", elapsed))
+        TextLogAddEntry(logFile, 0, payload)
 		TextLogSaveLog(logFile, path)
 	end
 end
