@@ -24,9 +24,9 @@ This precision is frame-level: entries emitted during the same frame share a tim
 
 | Command                                | Action                                                                                              |
 | -------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `/perfmon on` or `/perfmon start`      | Starts recording elapsed-time samples, enables DebugWindow filters, and starts core-module logging. |
-| `/perfmon off` or `/perfmon stop`      | Stops recording, disables DebugWindow filters, and stops core-module logging.                       |
-| `/perfmon bp` or `/perfmon breakpoint` | Adds a labelled marker to the current recording.                                                    |
+| `/perfmon start`                       | Starts recording elapsed-time samples, enables DebugWindow filters, and starts core-module logging. |
+| `/perfmon stop`                        | Stops recording, disables DebugWindow filters, and stops core-module logging.                       |
+| `/perfmon breakpoint`                  | Adds a labelled marker to the current recording.                                                    |
 
 ## Log analysis
 
