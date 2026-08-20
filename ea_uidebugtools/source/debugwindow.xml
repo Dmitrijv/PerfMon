@@ -302,6 +302,19 @@
                                 <EventHandler event="OnLButtonUp" function="DebugWindow.CopyToggle"/>
                             </EventHandlers>
                         </Button>
+                <Button name="$parentSaveToFile" inherits="EA_Button_DefaultText"  font="font_clear_small_bold" textalign="center" alpha="0">
+                          <Size>
+                            <AbsPoint y="32" x="90"/>
+                          </Size>
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topright" relativeTo="$parentToggleCopy">
+                                    <AbsPoint x="-5" y="0" />
+                                </Anchor>
+                            </Anchors>
+                            <EventHandlers>
+                                <EventHandler event="OnLButtonUp" function="DebugWindow.SaveToFile"/>
+                            </EventHandlers>
+                        </Button>
                 <Button name="$parentToggleDevPad" inherits="EA_Button_DefaultText"  font="font_clear_small_bold" textalign="center" alpha="0">
                           <Size>
                             <AbsPoint y="32" x="80"/>

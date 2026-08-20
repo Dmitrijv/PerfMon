@@ -59,6 +59,8 @@ function Busted.ProcessUiLogUpdate(updateType, filterType)
     local lastEntryNum = TextLogGetNumEntries("UiLog") - 1
     local entryTime, entryFilter, entryText = TextLogGetEntry("UiLog", lastEntryNum)
 
+    if entryText:find(L"EA_Window_ManageUiProfiles", 1, true) then return end
+
     -- Pull out the addon which generated the error, if it's specified
     local addonName, errorMessage = entryText:match(L"^%(([^)]+)%):  (.*)")
 

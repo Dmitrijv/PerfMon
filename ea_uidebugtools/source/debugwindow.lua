@@ -13,7 +13,7 @@ DebugWindow.Settings =
 {
     logsOn = false,
     useDevErrorHandling = false,
-    loadLuaDebugLibrary = false,
+    loadLuaDebugLibrary = true,
     buttonclick=false
 }
 
@@ -39,7 +39,7 @@ if( IsInternalBuild() and (InterfaceCore.inGame == false) and TextLogGetEnabled(
 then
     DebugWindow.Settings.logsOn = false
     DebugWindow.Settings.useDevErrorHandling = false --GetUseLuaErrorHandling()
-    DebugWindow.Settings.loadLuaDebugLibrary = false
+    DebugWindow.Settings.loadLuaDebugLibrary = true
 
     -- Filters
     for filterType, filterData in pairs( DebugWindow.Settings.LogFilters )
@@ -87,7 +87,8 @@ function DebugWindow.Initialize()
     DebugWindow.SpyCheck()
     Mesh.MeshCheck()
 
-    SetLoadLuaDebugLibrary( false )
+   SetLoadLuaDebugLibrary( true )
+   --SetLoadLuaDebugLibrary( false )
 
     -- Init the Settings
     for filterName, filterType in pairs( SystemData.UiLogFilters )
@@ -127,6 +128,9 @@ function DebugWindow.Initialize()
 
     --Copy
     ButtonSetText( "DebugWindowToggleCopy", L"Copy")
+
+    --Save to File
+    ButtonSetText( "DebugWindowSaveToFile", L"Save to File")
 
     --Object
     ButtonSetText("DebugWindowToggleObject", L"Inspect")
@@ -194,11 +198,13 @@ function DebugWindow.Initialize()
       mesh=Mesh.Toggle
       changefont=SetNamesAndTitlesFont
 
-
 end
 
 
 function DebugWindow.OnShown()
+  if WindowUtils and WindowUtils.AddToOpenList then
+      WindowUtils.AddToOpenList("DebugWindow", nil, nil)
+  end
   if not bustedloaded then return else
   if Busted.Show then
   BustedGUI.ToggleMainWindow()
@@ -495,13 +501,14 @@ end
 
 
   function DebugWindow.OnShowFocus()
-    local  visible = WindowGetShowing("DebugWindow") == true
-    local  codevis=WindowGetShowing("DevPadWindowDevPadCode")==true
-        if codevis==true and  visible==false then
-          WindowAssignFocus("DevPadWindowDevPadCode", true)
-        elseif visible==true then
-        WindowAssignFocus( "DebugWindowTextBox", true ) end
-      end
+    local debugVis = WindowGetShowing("DebugWindow")
+    local devpadVis = WindowGetShowing("DevPadWindow")
+    if debugVis then
+        WindowAssignFocus("DebugWindowTextBox", true)
+    elseif devpadVis then
+        WindowAssignFocus("DevPadWindowDevPadCode", true)
+    end
+  end
 
 -----------REGISTER MAIN FUNCTION---------------
 function DebugWindow.EventRegister()
@@ -701,9 +708,8 @@ function DebugWindow.TextClear()
 ---------on esc window behavior------------------------------
 function DebugWindow.OnKeyEscape()
   if WindowGetShowing("DebugWindow") then
-      WindowAssignFocus( "DebugWindowTextBox", true)
-      DebugWindow.ScrollToBottom ()
-    end
+      DebugWindow.Hide()
+  end
 end
 ------------------------
 
@@ -737,6 +743,48 @@ function DebugWindow.GetEntries()
     end
     TextEditBoxSetTextColor("DevPadCopyLog",223,185,53)
     TextEditBoxSetText("DevPadCopyLog", copyText)
+end
+
+---save log entries to file
+function DebugWindow.SaveToFile()
+    local numEntries = TextLogGetNumEntries("UiLog")
+    if numEntries == 0 then
+        EA_ChatWindow.Print(towstring("<icon=58> ea_uidebugtools: No log entries to save."))
+        return
+    end
+
+    local t = GetComputerTime()
+    local d = GetTodaysDate()
+    local hours   = math.floor(t / 3600)
+    local minutes = math.floor((t % 3600) / 60)
+    local seconds = t % 60
+    local stamp = string.format(
+        "%04d_%02d_%02d_%02d%02d%02d",
+        d.todaysYear, d.todaysMonth, d.todaysDay,
+        hours, minutes, seconds
+    )
+
+    local file = "ea_uidebug_" .. stamp
+    local relPath = towstring("logs/" .. file .. ".log")
+
+    TextLogCreate(file, 999999)
+    TextLogSetEnabled(file, true)
+    TextLogSetIncrementalSaving(file, true, relPath)
+
+    for i = 0, numEntries - 1 do
+        local _, filterId, text = TextLogGetEntry("UiLog", i)
+        local prefix = L""
+        if     filterId == 3  then prefix = L"[Error]: "
+        elseif filterId == 2  then prefix = L"[Warning]: "
+        elseif filterId == 4  then prefix = L"[Debug]: "
+        elseif filterId == 11 then prefix = L"[Event]: "
+        elseif filterId == 5  then prefix = L"[Function]: "
+        end
+        TextLogAddEntry(file, filterId, prefix .. text)
+    end
+
+    TextLogSaveLog(file, towstring(""))
+    EA_ChatWindow.Print(towstring("<icon=57> ea_uidebugtools: saved UI debug log to logs/" .. file .. ".log"))
 end
 
 ---prevent overwriting copy text

@@ -19,6 +19,15 @@ local exist=false;
 local executed=false;
 local nobuttontoggle=false;
 
+local WindowGetShowing = WindowGetShowing
+local WindowAssignFocus = WindowAssignFocus
+
+local function SafeFocus(target, parent)
+	if WindowGetShowing(parent) and WindowGetShowing(target) then
+		WindowAssignFocus(target, true)
+	end
+end
+
 
 ------------------------------------------------------------------------------
 ---------------------------------MAIN WINDOW----------------------------------
@@ -343,14 +352,12 @@ end
 ------------------------------------------------------------------------------
 ---------------------------------HIDE WINDOW----------------------------------
 function DevPadWindow.HideNewWindow()
-	local visible=WindowGetShowing(windowName)==true
-		local visible2=WindowGetShowing("DebugWindow")==true
-		TextEditBoxSetText(newWindowText, L"")
-		WindowSetShowing(newWindow, false)
-		if visible==true then
-			WindowAssignFocus(codeWindow, true)
-		elseif visible==false and visible2==true then
-			WindowAssignFocus("DebugWindowTextBox", true)
+	TextEditBoxSetText(newWindowText, L"")
+	WindowSetShowing(newWindow, false)
+	if WindowGetShowing(windowName) then
+		SafeFocus(codeWindow, windowName)
+	else
+		SafeFocus("DebugWindowTextBox", "DebugWindow")
 	end
 end
 
@@ -413,14 +420,12 @@ end
 -----------------------------------------------------------------------------
 --------------------------CANCEL RENAME--------------------------------------
 function DevPadWindow.CancelRename()
-	local visible=WindowGetShowing(windowName)==true
-		local visible2=WindowGetShowing("DebugWindow")==true
-		TextEditBoxSetText(renameWindowText, L"")
-		WindowSetShowing(renameWindow, false)
-		if visible==true then
-			WindowAssignFocus(codeWindow, true)
-		elseif visible==false and visible2==true then
-			WindowAssignFocus("DebugWindowTextBox", true)
+	TextEditBoxSetText(renameWindowText, L"")
+	WindowSetShowing(renameWindow, false)
+	if WindowGetShowing(windowName) then
+		SafeFocus(codeWindow, windowName)
+	else
+		SafeFocus("DebugWindowTextBox", "DebugWindow")
 	end
 end
 
@@ -486,13 +491,11 @@ end
 
 -------HIDE WINDOW-
 	function DevPadWindow.HideLoadProject()
-		local visible=WindowGetShowing(projectWindow)==true
-		local visible2=WindowGetShowing("DebugWindow")==true
 		WindowSetShowing(projectWindow, false)
-		if visible==true then
-			WindowAssignFocus(codeWindow, true)
-		elseif visible==false and visible2==true then
-			WindowAssignFocus("DebugWindowTextBox", true)
+		if WindowGetShowing(windowName) then
+			SafeFocus(codeWindow, windowName)
+		else
+			SafeFocus("DebugWindowTextBox", "DebugWindow")
 		end
 	end
 
@@ -540,13 +543,11 @@ function DevPadWindow.ConfirmLoadFile()
 
 
 	function DevPadWindow.HideConfirmLoadWindow()
-		local visible=WindowGetShowing(windowName)==true
-		local visible2=WindowGetShowing("DebugWindow")==true
 		WindowSetShowing(loadWindow, false)
-		if visible==true then
-			WindowAssignFocus(codeWindow, true)
-		elseif visible==false and visible2==true then
-			WindowAssignFocus("DebugWindowTextBox", true)
+		if WindowGetShowing(windowName) then
+			SafeFocus(codeWindow, windowName)
+		else
+			SafeFocus("DebugWindowTextBox", "DebugWindow")
 		end
 	end
 
@@ -586,16 +587,14 @@ function DevPadWindow.ConfirmLoadFile()
 
 	------------------HIDE SAVE WINDOW
 	function DevPadWindow.HideSaveWindow()
-		local visible=WindowGetShowing(windowName)==true
-			local visible2=WindowGetShowing("DebugWindow")==true
-			TextEditBoxSetText(saveWindowText, L"")
-			WindowSetShowing(saveWindow, false)
-			if visible==true then
-				WindowAssignFocus(codeWindow, true)
-			elseif visible==false and visible2==true then
-				WindowAssignFocus("DebugWindowTextBox", true)
-			end
-			end
+		TextEditBoxSetText(saveWindowText, L"")
+		WindowSetShowing(saveWindow, false)
+		if WindowGetShowing(windowName) then
+			SafeFocus(codeWindow, windowName)
+		else
+			SafeFocus("DebugWindowTextBox", "DebugWindow")
+		end
+	end
 
 -------------SAVE FILE
 	function DevPadWindow.ToggleSave()
@@ -750,13 +749,11 @@ end
 ------------------------------------------------------------------------------
 ------------------------------HIDE DEL WINDOW---------------------------------
 function DevPadWindow.HideDeleteWindow()
-	local visible=WindowGetShowing(windowName)==true
-	local visible2=WindowGetShowing("DebugWindow")==true
 	WindowSetShowing(deleteWindow, false)
-	if visible==true then
-		WindowAssignFocus(codeWindow, true)
-	elseif visible==false and visible2==true then
-		WindowAssignFocus("DebugWindowTextBox", true)
+	if WindowGetShowing(windowName) then
+		SafeFocus(codeWindow, windowName)
+	else
+		SafeFocus("DebugWindowTextBox", "DebugWindow")
 	end
 end
 
